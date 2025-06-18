@@ -14,6 +14,11 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+// fix for webOS older kernel headers
+#ifndef INPUT_PROP_ACCELEROMETER
+#define INPUT_PROP_ACCELEROMETER 0x02
+#endif
+
 #include "Common/Assert.h"
 #include "Common/Flag.h"
 #include "Common/Logging/Log.h"

@@ -120,6 +120,73 @@ const std::string SConfig::GetTitleName() const
   return m_title_name;
 }
 
+// WEBOS TODO:
+/* IniFile::Section* core = ini.GetOrCreateSection("Core");
+
+core->Get("SkipIPL", &bHLE_BS2, true);
+#ifdef _M_X86
+core->Get("CPUCore", &cpu_core, PowerPC::CPUCore::JIT64);
+#elif _M_ARM_32
+core->Get("CPUCore", &cpu_core, PowerPC::CPUCore::JITARM);
+#elif _M_ARM_64
+core->Get("CPUCore", &cpu_core, PowerPC::CPUCore::JITARM64);
+#else
+core->Get("CPUCore", &cpu_core, PowerPC::CPUCore::Interpreter);
+#endif
+core->Get("JITFollowBranch", &bJITFollowBranch, true);
+core->Get("Fastmem", &bFastmem, true);
+core->Get("DSPHLE", &bDSPHLE, true);
+core->Get("TimingVariance", &iTimingVariance, 40);
+core->Get("CPUThread", &bCPUThread, true);
+core->Get("SyncOnSkipIdle", &bSyncGPUOnSkipIdleHack, true);
+core->Get("EnableCheats", &bEnableCheats, false);
+core->Get("SelectedLanguage", &SelectedLanguage, 0);
+core->Get("OverrideRegionSettings", &bOverrideRegionSettings, false);
+core->Get("DPL2Decoder", &bDPL2Decoder, false);
+core->Get("AudioLatency", &iLatency, 20);
+core->Get("AudioStretch", &m_audio_stretch, false);
+core->Get("AudioStretchMaxLatency", &m_audio_stretch_max_latency, 80);
+core->Get("AgpCartAPath", &m_strGbaCartA);
+core->Get("AgpCartBPath", &m_strGbaCartB);
+core->Get("SlotA", (int*)&m_EXIDevice[0], ExpansionInterface::EXIDEVICE_MEMORYCARDFOLDER);
+core->Get("SlotB", (int*)&m_EXIDevice[1], ExpansionInterface::EXIDEVICE_NONE);
+core->Get("SerialPort1", (int*)&m_EXIDevice[2], ExpansionInterface::EXIDEVICE_NONE);
+core->Get("BBA_MAC", &m_bba_mac);
+core->Get("BBA_XLINK_IP", &m_bba_xlink_ip, "127.0.0.1");
+core->Get("BBA_XLINK_CHAT_OSD", &m_bba_xlink_chat_osd, true);
+for (size_t i = 0; i < std::size(m_SIDevice); ++i)
+{
+  core->Get(fmt::format("SIDevice{}", i), &m_SIDevice[i],
+            (i == 0) ? SerialInterface::SIDEVICE_GC_CONTROLLER : SerialInterface::SIDEVICE_NONE);
+  core->Get(fmt::format("AdapterRumble{}", i), &m_AdapterRumble[i], true);
+  core->Get(fmt::format("SimulateKonga{}", i), &m_AdapterKonga[i], false);
+}
+core->Get("WiiSDCard", &m_WiiSDCard, true);
+core->Get("WiiKeyboard", &m_WiiKeyboard, false);
+core->Get("WiimoteContinuousScanning", &m_WiimoteContinuousScanning, false);
+core->Get("WiimoteEnableSpeaker", &m_WiimoteEnableSpeaker, false);
+core->Get("WiimoteControllerInterface", &connect_wiimotes_for_ciface, false);
+core->Get("RunCompareServer", &bRunCompareServer, false);
+core->Get("RunCompareClient", &bRunCompareClient, false);
+core->Get("MMU", &bMMU, bMMU);
+core->Get("BBDumpPort", &iBBDumpPort, -1);
+core->Get("SyncGPU", &bSyncGPU, false);
+core->Get("SyncGpuMaxDistance", &iSyncGpuMaxDistance, 200000);
+core->Get("SyncGpuMinDistance", &iSyncGpuMinDistance, -200000);
+core->Get("SyncGpuOverclock", &fSyncGpuOverclock, 1.0f);
+core->Get("FastDiscSpeed", &bFastDiscSpeed, false);
+core->Get("LowDCBZHack", &bLowDCBZHack, false);
+core->Get("FPRF", &bFPRF, false);
+core->Get("AccurateNaNs", &bAccurateNaNs, false);
+core->Get("EmulationSpeed", &m_EmulationSpeed, 1.0f);
+core->Get("Overclock", &m_OCFactor, 1.0f);
+core->Get("OverclockEnable", &m_OCEnable, false);
+core->Get("GPUDeterminismMode", &m_strGPUDeterminismMode, "auto");
+core->Get("PerfMapDir", &m_perfDir, "");
+core->Get("EnableCustomRTC", &bEnableCustomRTC, false);
+// Default to seconds between 1.1.1970 and 1.1.2000
+core->Get("CustomRTCValue", &m_customRTCValue, 946684800);
+*/
 const std::string SConfig::GetTitleDescription() const
 {
   std::lock_guard<std::recursive_mutex> lock(m_metadata_lock);

@@ -36,6 +36,7 @@ enum class CPUCore
 {
   Interpreter = 0,
   JIT64 = 1,
+  JITARM = 3,
   JITARM64 = 4,
   CachedInterpreter = 5,
 };

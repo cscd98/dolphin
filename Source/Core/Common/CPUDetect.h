@@ -46,6 +46,22 @@ struct CPUInfo
   bool bSHA1 = false;
   bool bSHA2 = false;
 
+  // ARM specific CPUInfo
+  bool bSwp = false;
+  bool bHalf = false;
+  bool bThumb = false;
+  bool bFastMult = false;
+  bool bVFP = false;
+  bool bEDSP = false;
+  bool bThumbEE = false;
+  bool bNEON = false;
+  bool bVFPv3 = false;
+  bool bTLS = false;
+  bool bVFPv4 = false;
+  bool bIDIVa = false;
+  bool bIDIVt = false;
+  bool bArmV7 = false; // enable MOVT, MOVW etc
+
   // ARMv8 specific
   bool bAFP = false;  // Alternate floating-point behavior
 

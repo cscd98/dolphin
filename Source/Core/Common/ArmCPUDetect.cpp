@@ -45,6 +45,30 @@
 #include "Common/FileUtil.h"
 #include "Common/StringUtil.h"
 
+// webOS toolchain - these are undefined:
+#ifndef HWCAP_FP
+#define HWCAP_FP       (1 << 0)  /* Floating-point support */
+#endif
+#ifndef HWCAP_ASIMD
+#define HWCAP_ASIMD    (1 << 1)  /* Advanced SIMD (NEON) */
+#endif
+#ifndef HWCAP_AES
+#define HWCAP_AES      (1 << 3)  /* AES instructions */
+#endif
+#ifndef HWCAP_SHA1
+#define HWCAP_SHA1     (1 << 5)  /* SHA-1 instructions */
+#endif
+#ifndef HWCAP_SHA2
+#define HWCAP_SHA2     (1 << 6)  /* SHA-2 instructions */
+#endif
+#ifndef HWCAP_CRC32
+#define HWCAP_CRC32    (1 << 7)  /* CRC32 instructions */
+#endif
+#ifndef HWCAP_CPUID
+#define HWCAP_CPUID (1 << 11)  // value from Linux uapi/asm/hwcap.h
+#endif
+// end webOS
+
 #if defined(__APPLE__) || defined(__FreeBSD__)
 
 static bool SysctlByName(std::string* value, const std::string& name)
@@ -172,12 +196,22 @@ static u32 ReadHwCap(u32 type)
 // other measures are taken, executing the instruction may cause the caller to be switched onto a
 // different core when it resumes (and of course, caller could be preempted at any other time as
 // well).
+#if defined(__aarch64__)
 static inline u64 Read_MIDR_EL1_Direct()
 {
   u64 value;
   __asm__ __volatile__("mrs %0, MIDR_EL1" : "=r"(value));
   return value;
 }
+#elif defined(__arm__)
+static inline u64 Read_MIDR_EL1_Direct()
+{
+  // WEBOS TODO: check this
+  u32 value;
+  asm volatile("mrc p15, 0, %0, c0, c0, 0" : "=r"(value));
+  return value;
+}
+#endif
 
 static bool Read_MIDR_EL1(u64* value)
 {

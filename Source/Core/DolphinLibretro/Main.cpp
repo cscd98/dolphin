@@ -177,7 +177,8 @@ void retro_run(void)
     g_Config.iEFBScale = Libretro::Options::efbScale;
 
     unsigned cmd = RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO;
-    if (Libretro::Video::hw_render.context_type == RETRO_HW_CONTEXT_D3D11)
+    if (Libretro::Video::hw_render.context_type == RETRO_HW_CONTEXT_D3D11 ||
+        Libretro::Video::hw_render.context_type == RETRO_HW_CONTEXT_D3D12)
       cmd = RETRO_ENVIRONMENT_SET_GEOMETRY;
 
     retro_system_av_info info;

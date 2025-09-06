@@ -12,6 +12,7 @@
 
 #ifdef _WIN32
 #define HAVE_D3D11
+#define HAVE_D3D12
 #include <libretro_d3d.h>
 #include "Common/DynamicLibrary.h"
 #include "VideoBackends/D3D/D3DBase.h"
@@ -21,6 +22,12 @@
 #include "VideoBackends/D3D/D3DVertexManager.h"
 #include "VideoBackends/D3D/D3DPerfQuery.h"
 #include "VideoBackends/D3D/D3DBoundingBox.h"
+#include "VideoBackends/D3D12/VideoBackend.h"
+#include "VideoBackends/D3D12/DX12Context.h"
+#include "VideoBackends/D3D12/D3D12Gfx.h"
+#include "VideoBackends/D3D12/D3D12VertexManager.h"
+#include "VideoBackends/D3D12/D3D12PerfQuery.h"
+#include "VideoBackends/D3D12/D3D12BoundingBox.h"
 #endif
 
 #include "Common/GL/GLContext.h"
@@ -61,6 +68,7 @@ namespace Video
 {
 #ifdef _WIN32
 static Common::DynamicLibrary d3d11_library;
+static Common::DynamicLibrary d3d12_library;
 #endif
 
 void Init()
@@ -80,6 +88,8 @@ void Init()
       return;
 #ifdef _WIN32
     if (SetHWRender(RETRO_HW_CONTEXT_D3D11))
+      return;
+    if (SetHWRender(RETRO_HW_CONTEXT_D3D12))
       return;
 #endif
 #ifdef HAS_VULKAN
@@ -144,7 +154,16 @@ bool SetHWRender(retro_hw_context_type type)
       Config::SetBase(Config::MAIN_GFX_BACKEND, "D3D");
       return true;
     }
-    break;
+  break;
+  case RETRO_HW_CONTEXT_D3D12:
+    hw_render.version_major = 12;
+    hw_render.version_minor = 0;
+    if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
+    {
+      Config::SetBase(Config::MAIN_GFX_BACKEND, "D3D12");
+      return true;
+    }
+  break;
 #endif
 #ifdef HAS_VULKAN
   case RETRO_HW_CONTEXT_VULKAN:
@@ -258,6 +277,63 @@ void ContextReset(void)
     auto bounding_box = std::make_unique<DX11::D3DBoundingBox>();
 
     d3d11->InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
+                            std::move(bounding_box));
+    return;
+  }
+  if (hw_render.context_type == RETRO_HW_CONTEXT_D3D12)
+  {
+    WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+    wsi.render_surface_scale = Libretro::Options::efbScale;
+    g_video_backend->PrepareWindow(wsi);
+
+    retro_hw_render_interface_d3d12* d3d;
+    if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE, (void**)&d3d) || !d3d)
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to get HW rendering interface!");
+      return;
+    }
+    if (d3d->interface_version != RETRO_HW_RENDER_INTERFACE_D3D12_VERSION)
+    {
+      ERROR_LOG_FMT(VIDEO, "HW render interface mismatch, expected {}, got {}!",
+                RETRO_HW_RENDER_INTERFACE_D3D12_VERSION, d3d->interface_version);
+      return;
+    }
+
+    DX12::DXContext::Create(d3d->device, d3d->queue, false);
+    //DX12::g_dx_context->GetDevice()->CheckFeatureSupport(
+    //  D3D12_FEATURE_FEATURE_LEVELS, &d3d->featureLevel, sizeof(d3d->featureLevel));
+
+    D3DCommon::d3d_compile = d3d->D3DCompile;
+
+    if (!d3d12_library.Open("d3d12.dll") || !D3DCommon::LoadLibraries())
+    {
+      d3d12_library.Close();
+      ERROR_LOG_FMT(VIDEO, "Failed to load D3D12 Libraries");
+      return;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D12Device1> device1;
+    if (FAILED(DX12::g_dx_context->GetDevice()->QueryInterface(IID_PPV_ARGS(&device1))))
+    {
+      WARN_LOG_FMT(VIDEO, "Missing Direct3D 12.1+ support. Logical operations will not be supported.");
+      g_backend_info.bSupportsLogicOp = false;
+    }
+
+    DX12::VideoBackend* d3d12 = static_cast<DX12::VideoBackend*>(g_video_backend);
+
+    d3d12->FillD3DBackendInfo();
+    UpdateActiveConfig();
+
+    std::unique_ptr<DX12SwapChain> swap_chain = std::make_unique<DX12SwapChain>(
+      wsi, EFB_WIDTH * Libretro::Options::efbScale, EFB_HEIGHT * Libretro::Options::efbScale,
+      nullptr, nullptr);
+
+    auto gfx = std::make_unique<DX12::Gfx>(std::move(swap_chain), wsi.render_surface_scale);
+    auto vertex_manager = std::make_unique<DX12::VertexManager>();
+    auto perf_query = std::make_unique<DX12::PerfQuery>();
+    auto bounding_box = std::make_unique<DX12::D3D12BoundingBox>();
+
+    d3d12->InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
                             std::move(bounding_box));
     return;
   }
@@ -379,6 +455,20 @@ void ContextDestroy(void)
     DX11::D3D::stateman.reset();
     D3DCommon::UnloadLibraries();
     d3d11_library.Close();
+#endif
+    break;
+  case RETRO_HW_CONTEXT_D3D12:
+#ifdef _WIN32
+    if (g_gfx)
+    {
+      g_gfx->Flush();
+      g_gfx->WaitForGPUIdle();
+    }
+    if (DX12::g_dx_context)
+      DX12::g_dx_context.reset();
+    D3DCommon::d3d_compile = nullptr;
+    D3DCommon::UnloadLibraries();
+    d3d12_library.Close();
 #endif
     break;
   case RETRO_HW_CONTEXT_VULKAN:

@@ -21,6 +21,9 @@ public:
 
   static constexpr const char* NAME = "D3D12";
 
+#ifdef __LIBRETRO__
+  void FillD3DBackendInfo() { FillBackendInfo(); }
+#endif
 private:
   void FillBackendInfo();
 };

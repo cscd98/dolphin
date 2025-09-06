@@ -130,6 +130,44 @@ bool DXContext::Create(u32 adapter_index, bool enable_debug_layer)
   return true;
 }
 
+#ifdef __LIBRETRO__
+bool DX12::DXContext::Create(ID3D12Device* external_device,
+                             ID3D12CommandQueue* external_queue,
+                             bool enable_debug_layer)
+{
+  ASSERT(!g_dx_context);
+
+  if (!s_d3d12_library.Open("d3d12.dll") ||
+      !s_d3d12_library.GetSymbol("D3D12CreateDevice", &s_d3d12_create_device) ||
+      !s_d3d12_library.GetSymbol("D3D12GetDebugInterface", &s_d3d12_get_debug_interface) ||
+      !s_d3d12_library.GetSymbol("D3D12SerializeRootSignature", &s_d3d12_serialize_root_signature))
+  {
+    PanicAlertFmtT("d3d12.dll could not be loaded.");
+    s_d3d12_library.Close();
+    return false;
+  }
+
+  if (!D3DCommon::LoadLibraries())
+  {
+    s_d3d12_library.Close();
+    return false;
+  }
+
+  g_dx_context.reset(new DXContext());
+  g_dx_context->m_device = external_device;
+  g_dx_context->m_command_queue = external_queue;
+
+  if (!g_dx_context->CreateDXGIFactory(enable_debug_layer) ||
+      !g_dx_context->CreateFence())
+  {
+    Destroy();
+    return false;
+  }
+
+  return true;
+}
+#endif
+
 bool DXContext::CreateGlobalResources()
 {
   return g_dx_context->CreateDescriptorHeaps() && g_dx_context->CreateRootSignatures() &&

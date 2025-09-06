@@ -16,6 +16,12 @@
 #include "VideoBackends/D3D/DXShader.h"
 #include "VideoBackends/D3D/DXTexture.h"
 #include "VideoBackends/D3D/D3DSwapChain.h"
+#include "VideoBackends/D3D12/D3D12Gfx.h"
+#include "VideoBackends/D3D12/DX12Context.h"
+#include "VideoBackends/D3D12/DX12Shader.h"
+#include "VideoBackends/D3D12/DX12Texture.h"
+#include "VideoBackends/D3D12/D3D12SwapChain.h"
+#include "VideoBackends/D3D12/DescriptorHeapManager.h"
 #endif
 #ifdef HAS_VULKAN
 #ifndef __APPLE__
@@ -80,7 +86,7 @@ public:
     m_width = width;
     m_height = height;
     m_stereo = WantsStereo();
-    CreateSwapChainBuffers();
+    //CreateSwapChainBuffers();
   }
 
   bool Present() override
@@ -137,6 +143,129 @@ protected:
 
     return true;
   }
+};
+
+class DX12SwapChain : public DX12::SwapChain
+{
+public:
+  DX12SwapChain(const WindowSystemInfo& wsi, int width, int height,
+                IDXGIFactory* dxgi_factory, ID3D12CommandQueue* d3d_command_queue)
+      : DX12::SwapChain(wsi, dxgi_factory, d3d_command_queue)
+  {
+    m_width = width;
+    m_height = height;
+    m_stereo = WantsStereo();
+    CreateNullRTV();
+    CreateSwapChainBuffers();
+  }
+
+  bool Present() override
+  {
+    auto* tex = GetCurrentTexture();
+    if (!tex)
+    {
+        ERROR_LOG_FMT(VIDEO, "Present aborted: no swap chain texture");
+        return false;
+    }
+
+    const DX12::DescriptorHandle& srv = tex->GetSRVDescriptor();
+    if (!srv)
+    {
+        ERROR_LOG_FMT(VIDEO, "Present aborted: no SRV for swap chain texture");
+        return false;
+    }
+
+    DX12::g_dx_context->GetCommandList()->OMSetRenderTargets(1, &m_null_rtv, FALSE, nullptr);
+    auto* cmdlist = DX12::g_dx_context->GetCommandList();
+
+    cmdlist->SetGraphicsRootDescriptorTable(DX12::ROOT_PARAMETER_PS_SRV, srv.gpu_handle);
+
+    Libretro::Video::video_cb(RETRO_HW_FRAME_BUFFER_VALID,
+                              m_width, m_height,
+                              m_width);
+
+    static_cast<DX12::Gfx*>(g_gfx.get())->ApplyState();
+
+    return true;
+  }
+
+protected:
+  bool CreateSwapChainBuffers() override
+  {
+    DX12::DXContext* ctx = DX12::g_dx_context.get();
+    if (!ctx)
+    {
+      ERROR_LOG_FMT(VIDEO, "DX12 context is null");
+      return false;
+    }
+
+    ID3D12Device* device = ctx->GetDevice();
+    ID3D12CommandQueue* queue = ctx->GetCommandQueue();
+
+    if (!device || !queue)
+    {
+      ERROR_LOG_FMT(VIDEO, "DX12 device or command queue is null");
+      return false;
+    }
+
+    TextureConfig config(m_width, m_height, 1, 1, 1,
+                         AbstractTextureFormat::RGBA8,
+                         AbstractTextureFlag_RenderTarget,
+                         AbstractTextureType::Texture_2D);
+
+    for (u32 i = 0; i < SWAP_CHAIN_BUFFER_COUNT; i++)
+    {
+      auto tex = DX12::DXTexture::Create(config, "LibretroSwapChainTexture");
+      ASSERT_MSG(VIDEO, tex != nullptr, "Failed to create swap chain buffer texture");
+      if (!tex)
+        return false;
+
+      auto fb = DX12::DXFramebuffer::Create(tex.get(), nullptr, {});
+      ASSERT_MSG(VIDEO, fb != nullptr,
+                "Failed to create swap chain buffer framebuffer");
+      if (!fb)
+        return false;
+
+      AddTexture(std::move(tex), std::move(fb));
+    }
+
+    ResetCurrentBuffer();
+
+    return true;
+  }
+private:
+  void CreateNullRTV()
+  {
+    if (!m_null_rtv_heap)
+    {
+      D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+      desc.NumDescriptors = 1;
+      desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+      desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+      HRESULT hr = DX12::g_dx_context->GetDevice()->CreateDescriptorHeap(
+        &desc, IID_PPV_ARGS(&m_null_rtv_heap));
+
+      if (FAILED(hr))
+      {
+          ERROR_LOG_FMT(VIDEO, "CreateDescriptorHeap failed: 0x{:08X}",
+                        static_cast<unsigned>(hr));
+          return;
+      }
+    }
+
+    m_null_rtv = m_null_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+
+    D3D12_RENDER_TARGET_VIEW_DESC null_desc = {};
+    null_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    null_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+    null_desc.Texture2D.MipSlice = 0;
+    null_desc.Texture2D.PlaneSlice = 0;
+
+    DX12::g_dx_context->GetDevice()->CreateRenderTargetView(nullptr, &null_desc, m_null_rtv);
+  }
+
+  Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_null_rtv_heap;
+  D3D12_CPU_DESCRIPTOR_HANDLE m_null_rtv = {};
 };
 
 #endif

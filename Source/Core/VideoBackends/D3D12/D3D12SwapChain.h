@@ -10,14 +10,12 @@
 #include "Common/CommonTypes.h"
 #include "Common/WindowSystemInfo.h"
 #include "VideoBackends/D3D12/Common.h"
+#include "VideoBackends/D3D12/DX12Texture.h"
 #include "VideoBackends/D3DCommon/SwapChain.h"
 #include "VideoCommon/TextureConfig.h"
 
 namespace DX12
 {
-class DXTexture;
-class DXFramebuffer;
-
 class SwapChain : public D3DCommon::SwapChain
 {
 public:
@@ -34,6 +32,18 @@ public:
   {
     return m_buffers[m_current_buffer].framebuffer.get();
   }
+
+#ifdef __LIBRETRO__
+  void AddTexture(std::unique_ptr<DX12::DXTexture> new_tex,
+                  std::unique_ptr<DX12::DXFramebuffer> new_fb)
+  {
+    BufferResources buffer;
+    buffer.texture = std::move(new_tex);
+    buffer.framebuffer = std::move(new_fb);
+    m_buffers.push_back(std::move(buffer));
+  }
+  void ResetCurrentBuffer() { m_current_buffer = 0; }
+#endif
 
 protected:
   bool CreateSwapChainBuffers() override;

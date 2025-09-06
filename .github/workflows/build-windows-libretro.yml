@@ -1,0 +1,42 @@
+name: Build Dolphin (libretro) on Windows
+
+on: [push, pull_request]
+
+env:
+  core_id: dolphin_libretro
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        choco install cmake ninja git
+
+    - name: Checkout Dolphin (libretro) repo
+      uses: actions/checkout@v4
+      with:
+        path: ${{ env.core_id }}
+
+    - name: Configure (MSVC)
+      run: |
+        cd ${{ env.core_id }}
+        mkdir build && cd build
+        cmake .. -DLIBRETRO=ON -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" -A x64
+
+    - name: Build
+      run: |
+        cmake --build ${{ env.core_id }}/build --config Release --parallel
+
+    - name: Package core
+      run: |
+        mkdir artifacts
+        copy ${{ env.core_id }}\build\Release\dolphin_libretro.dll artifacts\dolphin_libretro.dll
+        cd artifacts
+        powershell Compress-Archive -Path dolphin_libretro.dll -DestinationPath dolphin_libretro_windows_x64.zip
+
+    - name: Upload zipped artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dolphin_libretro_windows_x64.zip
+        path: artifacts/dolphin_libretro_windows_x64.zip

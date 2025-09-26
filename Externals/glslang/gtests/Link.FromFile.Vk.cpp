@@ -75,10 +75,8 @@ TEST_P(LinkTestVulkan, FromFile)
     result.linkingOutput = program.getInfoLog();
     result.linkingError = program.getInfoDebugLog();
 
-#if !defined(GLSLANG_WEB) && !defined(GLSLANG_ANGLE)
-        if (success)
-            program.mapIO();
-#endif
+    if (success)
+        program.mapIO();
 
     if (success && (controls & EShMsgSpvRules)) {
         spv::SpvBuildLogger logger;
@@ -88,7 +86,6 @@ TEST_P(LinkTestVulkan, FromFile)
                                 spirv_binary, &logger, &options());
 
         std::ostringstream disassembly_stream;
-        spv::Parameterize();
         spv::Disassemble(disassembly_stream, spirv_binary);
         result.spirvWarningsErrors = logger.getAllMessages();
         result.spirv = disassembly_stream.str();
@@ -124,7 +121,12 @@ INSTANTIATE_TEST_SUITE_P(
         {"link.vk.pcNamingInvalid.0.0.vert", "link.vk.pcNamingInvalid.0.1.vert"},
         {"link.vk.multiBlocksValid.0.0.vert", "link.vk.multiBlocksValid.0.1.vert"},
         {"link.vk.multiBlocksValid.1.0.geom", "link.vk.multiBlocksValid.1.1.geom"},
+        {"link.vk.multiUnitLayout.0.comp", "link.vk.multiUnitLayout.1.comp"},
+        {"link.vk.multiUnitLayout.2.comp", "link.vk.multiUnitLayout.0.comp"},
         {"link.vk.inconsistentGLPerVertex.0.vert", "link.vk.inconsistentGLPerVertex.0.geom"},
+        {"link.vk.crossStageIO.0.vert", "link.vk.crossStageIO.0.frag"},
+        {"link.vk.crossStageIO.1.vert", "link.vk.crossStageIO.1.geom", "link.vk.crossStageIO.1.frag"},
+        {"link.vk.missingCrossStageIO.0.vert", "link.vk.missingCrossStageIO.0.frag"},
     }))
 );
 // clang-format on

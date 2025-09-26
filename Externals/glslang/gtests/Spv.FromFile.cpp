@@ -1,6 +1,6 @@
  //
 // Copyright (C) 2016 Google, Inc.
-// Copyright (C) 2019 ARM Limited.
+// Copyright (C) 2019, 2022-2024 Arm Limited.
 // Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
 //
 // All rights reserved.
@@ -65,8 +65,8 @@ std::string FileNameAsCustomTestSuffixIoMap(
 }
 
 using CompileVulkanToSpirvTest = GlslangTest<::testing::TestWithParam<std::string>>;
+using CompileVulkanToSpirvTestNoLink = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileVulkanToSpirvDeadCodeElimTest = GlslangTest<::testing::TestWithParam<std::string>>;
-using CompileVulkanToDebugSpirvTest = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileVulkan1_1ToSpirvTest = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileToSpirv14Test = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileToSpirv16Test = GlslangTest<::testing::TestWithParam<std::string>>;
@@ -76,10 +76,16 @@ using OpenGLSemantics = GlslangTest<::testing::TestWithParam<std::string>>;
 using VulkanAstSemantics = GlslangTest<::testing::TestWithParam<std::string>>;
 using HlslIoMap = GlslangTest<::testing::TestWithParam<IoMapData>>;
 using GlslIoMap = GlslangTest<::testing::TestWithParam<IoMapData>>;
+using CompileVulkanToSpirvTestQCOM = GlslangTest<::testing::TestWithParam<std::string>>;
+using CompileVulkanToSpirv13TestQCOM = GlslangTest<::testing::TestWithParam<std::string>>;
+using CompileVulkanToSpirv14TestQCOM = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileVulkanToSpirvTestAMD = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileVulkanToSpirvTestNV = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileVulkanToSpirv14TestNV = GlslangTest<::testing::TestWithParam<std::string>>;
 using CompileUpgradeTextureToSampledTextureAndDropSamplersTest = GlslangTest<::testing::TestWithParam<std::string>>;
+using GlslSpirvDebugInfoTest = GlslangTest<::testing::TestWithParam<std::string>>;
+using GlslNonSemanticShaderDebugInfoTest = GlslangTest<::testing::TestWithParam<std::string>>;
+using GlslNonSemanticShaderDebugInfoSpirv13Test = GlslangTest<::testing::TestWithParam<std::string>>;
 
 // Compiling GLSL to SPIR-V under Vulkan semantics. Expected to successfully
 // generate SPIR-V.
@@ -90,22 +96,21 @@ TEST_P(CompileVulkanToSpirvTest, FromFile)
                             Target::Spv);
 }
 
+// Compiling GLSL to SPIR-V under Vulkan semantics without linking. Expected to successfully generate SPIR-V.
+TEST_P(CompileVulkanToSpirvTestNoLink, FromFile)
+{
+    options().compileOnly = true;
+    // NOTE: Vulkan 1.3 is currently required to use the linkage capability
+    // TODO(ncesario) make sure this is actually necessary
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(), Source::GLSL, Semantics::Vulkan,
+                            glslang::EShTargetVulkan_1_3, glslang::EShTargetSpv_1_0, Target::Spv);
+}
+
 TEST_P(CompileVulkanToSpirvDeadCodeElimTest, FromFile)
 {
     loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
                             Source::GLSL, Semantics::Vulkan, glslang::EShTargetVulkan_1_0, glslang::EShTargetSpv_1_0,
                             Target::Spv);
-}
-
-// Compiling GLSL to SPIR-V with debug info under Vulkan semantics. Expected
-// to successfully generate SPIR-V.
-TEST_P(CompileVulkanToDebugSpirvTest, FromFile)
-{
-    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
-                            Source::GLSL, Semantics::Vulkan,
-                            glslang::EShTargetVulkan_1_0, glslang::EShTargetSpv_1_0,
-                            Target::Spv, true, "",
-                            "/baseResults/", false, true);
 }
 
 
@@ -123,10 +128,17 @@ TEST_P(CompileToSpirv14Test, FromFile)
                             Target::Spv);
 }
 
-TEST_P(CompileToSpirv16Test, FromFile)
+TEST_P(CompileToSpirv16Test, FromFileTargetVulkan1_3)
 {
     loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
                             Source::GLSL, Semantics::Vulkan, glslang::EShTargetVulkan_1_3, glslang::EShTargetSpv_1_6,
+                            Target::Spv);
+}
+
+TEST_P(CompileToSpirv16Test, FromFileTargetVulkan1_4)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
+                            Source::GLSL, Semantics::Vulkan, glslang::EShTargetVulkan_1_4, glslang::EShTargetSpv_1_6,
                             Target::Spv);
 }
 
@@ -195,6 +207,29 @@ TEST_P(GlslIoMap, FromFile)
                                  GetParam().flattenUniforms);
 }
 
+// Compiling GLSL to SPIR-V under Vulkan semantics (QCOM extensions enabled).
+// Expected to successfully generate SPIR-V.
+TEST_P(CompileVulkanToSpirvTestQCOM, FromFile)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
+                            Source::GLSL, Semantics::Vulkan, glslang::EShTargetVulkan_1_0, glslang::EShTargetSpv_1_0,
+                            Target::Spv);
+}
+
+TEST_P(CompileVulkanToSpirv13TestQCOM, FromFile)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
+                            Source::GLSL, Semantics::Vulkan, glslang::EShTargetVulkan_1_1, glslang::EShTargetSpv_1_3,
+                            Target::Spv);
+}
+
+TEST_P(CompileVulkanToSpirv14TestQCOM, FromFile)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(),
+                            Source::GLSL, Semantics::Vulkan, glslang::EShTargetVulkan_1_1, glslang::EShTargetSpv_1_4,
+                            Target::Spv);
+}
+
 // Compiling GLSL to SPIR-V under Vulkan semantics (AMD extensions enabled).
 // Expected to successfully generate SPIR-V.
 TEST_P(CompileVulkanToSpirvTestAMD, FromFile)
@@ -229,6 +264,27 @@ TEST_P(CompileUpgradeTextureToSampledTextureAndDropSamplersTest, FromFile)
                                                                      Target::Spv);
 }
 
+TEST_P(GlslSpirvDebugInfoTest, FromFile)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(), Source::GLSL, Semantics::Vulkan,
+                            glslang::EShTargetVulkan_1_0, glslang::EShTargetSpv_1_0, Target::Spv, true, "",
+                            "/baseResults/", false, true, false);
+}
+
+TEST_P(GlslNonSemanticShaderDebugInfoTest, FromFile)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(), Source::GLSL, Semantics::Vulkan,
+                            glslang::EShTargetVulkan_1_0, glslang::EShTargetSpv_1_0, Target::Spv, true, "",
+                            "/baseResults/", false, true, true);
+}
+
+TEST_P(GlslNonSemanticShaderDebugInfoSpirv13Test, FromFile)
+{
+    loadFileCompileAndCheck(GlobalTestSettings.testRoot, GetParam(), Source::GLSL, Semantics::Vulkan,
+                            glslang::EShTargetVulkan_1_1, glslang::EShTargetSpv_1_3, Target::Spv, true, "",
+                            "/baseResults/", false, true, true);
+}
+
 // clang-format off
 INSTANTIATE_TEST_SUITE_P(
     Glsl, CompileVulkanToSpirvTest,
@@ -258,6 +314,7 @@ INSTANTIATE_TEST_SUITE_P(
         "rayQuery-initialization.Error.comp",
         "rayQuery-global.rgen",
         "rayQuery-types.comp",
+        "rayQuery-OpConvertUToAccelerationStructureKHR.comp",
         "spv.set.vert",
         "spv.double.comp",
         "spv.100ops.frag",
@@ -305,8 +362,6 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.bool.vert",
         "spv.boolInBlock.frag",
         "spv.branch-return.vert",
-        "spv.bufferhandle1.frag",
-        "spv.bufferhandle10.frag",
         "spv.bufferhandle11.frag",
         "spv.bufferhandle12.frag",
         "spv.bufferhandle13.frag",
@@ -317,7 +372,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.bufferhandle18.frag",
         "spv.bufferhandle19_Errors.frag",
         "spv.bufferhandle2.frag",
-        "spv.bufferhandle3.frag",
+        "spv.bufferhandle3_Errors.frag",
         "spv.bufferhandle4.frag",
         "spv.bufferhandle5.frag",
         "spv.bufferhandle6.frag",
@@ -334,8 +389,6 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.constConstruct.vert",
         "spv.controlFlowAttributes.frag",
         "spv.conversion.frag",
-        "spv.coopmat.comp",
-        "spv.coopmat_Error.comp",
         "spv.dataOut.frag",
         "spv.dataOutIndirect.frag",
         "spv.dataOutIndirect.vert",
@@ -348,6 +401,15 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.discard-dce.frag",
         "spv.doWhileLoop.frag",
         "spv.earlyReturnDiscard.frag",
+        "spv.expect_assume.assumeEXT.comp",
+        "spv.expect_assume.expectEXT.comp",
+        "spv.expect_assume.expectEXT.exttypes.comp",
+        "spv.ext.ShaderTileImage.color.frag",
+        "spv.ext.ShaderTileImage.depth_stencil.frag",
+        "spv.ext.ShaderTileImage.subpassinput.frag",
+        "spv.ext.ShaderTileImage.typemismatch.frag",
+        "spv.ext.ShaderTileImage.overlap.frag",
+        "spv.ext.ShaderTileImage.wronglayout.frag",
         "spv.extPostDepthCoverage.frag",
         "spv.extPostDepthCoverage_Error.frag",
         "spv.float16convertonlyarith.comp",
@@ -355,6 +417,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.flowControl.frag",
         "spv.forLoop.frag",
         "spv.forwardFun.frag",
+        "spv.fp8_error.frag",
         "spv.fragmentDensity.frag",
         "spv.fragmentDensity.vert",
         "spv.fragmentDensity-es.frag",
@@ -369,18 +432,23 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.GeometryShaderPassthrough.geom",
         "spv.funcall.array.frag",
         "spv.load.bool.array.interface.block.frag",
+        "spv.int_dot.frag",
+        "spv.int_dot_Error.frag",
         "spv.interpOps.frag",
         "spv.int64.frag",
-        "spv.intcoopmat.comp",
         "spv.intOps.vert",
+        "spv.intrinsicsDebugBreak.frag",
         "spv.intrinsicsSpirvByReference.vert",
         "spv.intrinsicsSpirvDecorate.frag",
+        "spv.intrinsicsSpirvDecorateId.comp",
+        "spv.intrinsicsSpirvDecorateString.comp",
         "spv.intrinsicsSpirvExecutionMode.frag",
         "spv.intrinsicsSpirvInstruction.vert",
         "spv.intrinsicsSpirvLiteral.vert",
         "spv.intrinsicsSpirvStorageClass.rchit",
         "spv.intrinsicsSpirvType.rgen",
         "spv.intrinsicsSpirvTypeLocalVar.vert",
+        "spv.intrinsicsSpirvTypeWithTypeSpecifier.vert",
         "spv.invariantAll.vert",
         "spv.layer.tese",
         "spv.layoutNested.vert",
@@ -391,6 +459,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.matFun.vert",
         "spv.matrix.frag",
         "spv.matrix2.frag",
+        "spv.maximalReconvergence.vert",
         "spv.memoryQualifier.frag",
         "spv.merge-unreachable.frag",
         "spv.multiStruct.comp",
@@ -404,6 +473,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.nonuniform4.frag",
         "spv.nonuniform5.frag",
         "spv.noWorkgroup.comp",
+        "spv.nvAtomicFp16Vec.frag",
         "spv.nullInit.comp",
         "spv.offsets.frag",
         "spv.Operations.frag",
@@ -432,6 +502,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.sparseTexture.frag",
         "spv.sparseTextureClamp.frag",
         "spv.structAssignment.frag",
+        "spv.structCopy.comp",
         "spv.structDeref.frag",
         "spv.structure.frag",
         "spv.switch.frag",
@@ -444,6 +515,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.textureBuffer.vert",
         "spv.image.frag",
         "spv.imageAtomic64.frag",
+        "spv.imageAtomic64.comp",
         "spv.types.frag",
         "spv.uint.frag",
         "spv.uniformArray.frag",
@@ -467,9 +539,13 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.specConstant.float16.comp",
         "spv.specConstant.int16.comp",
         "spv.specConstant.int8.comp",
+        "spv.specConstantOp.int16.comp",
+        "spv.specConstantOp.int8.comp",
+        "spv.specConstantOp.float16.comp",
         "spv.storageBuffer.vert",
         "spv.terminate.frag",
         "spv.subgroupUniformControlFlow.vert",
+        "spv.subgroupSizeARB.frag",
         "spv.precise.tese",
         "spv.precise.tesc",
         "spv.viewportindex.tese",
@@ -482,9 +558,43 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.samplerlessTextureFunctions.frag",
         "spv.smBuiltins.vert",
         "spv.smBuiltins.frag",
+        "spv.ARMCoreBuiltIns.vert",
+        "spv.ARMCoreBuiltIns.frag",
         "spv.builtin.PrimitiveShadingRateEXT.vert",
         "spv.builtin.ShadingRateEXT.frag",
-        "spv.atomicAdd.bufferReference.comp"
+        "spv.fragmentShaderBarycentric3.frag",
+        "spv.fragmentShaderBarycentric4.frag",
+        "spv.ext.textureShadowLod.frag",
+        "spv.ext.textureShadowLod.error.frag",
+        "spv.floatFetch.frag",
+        "spv.atomicRvalue.error.vert",
+        "spv.sampledImageBlock.frag",
+        "spv.multiple.var.same.const.frag",
+        "spv.textureoffset_non_const.vert",
+        "spv.sparsetextureoffset_non_const.vert",
+        "spv.sparsetextureoffset_non_const_fail.vert",
+        "spv.tensorARM.access_qualifiers.comp",
+        "spv.tensorARM.all_accesses.comp",
+        "spv.tensorARM.array.comp",
+        "spv.tensorARM.declare.comp",
+        "spv.tensorARM.frag",
+        "spv.tensorARM.invalid_access.comp",
+        "spv.tensorARM.invalid_declare.comp",
+        "spv.tensorARM.invalid_operands.comp",
+        "spv.tensorARM.invalid_params.comp",
+        "spv.tensorARM.invalid_size.comp",
+        "spv.tensorARM.invalid_tensor_type.comp",
+        "spv.tensorARM.params.comp",
+        "spv.tensorARM.read.comp",
+        "spv.tensorARM.size.comp",
+    })),
+    FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, CompileVulkanToSpirvTestNoLink,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.exportFunctions.comp",
     })),
     FileNameAsCustomTestSuffix
 );
@@ -502,15 +612,6 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.dead-after-switch-break.vert",
         "spv.dead-complex-continue-after-return.vert",
         "spv.dead-complex-merge-after-return.vert",
-    })),
-    FileNameAsCustomTestSuffix
-);
-
-// clang-format off
-INSTANTIATE_TEST_SUITE_P(
-    Glsl, CompileVulkanToDebugSpirvTest,
-    ::testing::ValuesIn(std::vector<std::string>({
-        "spv.pp.line.frag",
     })),
     FileNameAsCustomTestSuffix
 );
@@ -548,6 +649,7 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.subgroupClustered.comp",
         "spv.subgroupClusteredNeg.comp",
         "spv.subgroupPartitioned.comp",
+        "spv.subgroupRotate.comp",
         "spv.subgroupShuffle.comp",
         "spv.subgroupShuffleRelative.comp",
         "spv.subgroupQuad.comp",
@@ -560,6 +662,8 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.subgroupExtendedTypesClusteredNeg.comp",
         "spv.subgroupExtendedTypesPartitioned.comp",
         "spv.subgroupExtendedTypesPartitionedNeg.comp",
+        "spv.subgroupExtendedTypesRotate.comp",
+        "spv.subgroupExtendedTypesRotateNeg.comp",
         "spv.subgroupExtendedTypesShuffle.comp",
         "spv.subgroupExtendedTypesShuffleNeg.comp",
         "spv.subgroupExtendedTypesShuffleRelative.comp",
@@ -569,6 +673,35 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.subgroupExtendedTypesVote.comp",
         "spv.subgroupExtendedTypesVoteNeg.comp",
         "spv.vulkan110.storageBuffer.vert",
+
+        // These tests use the Vulkan memory model.
+        "spv.bfloat16.comp",
+        "spv.bfloat16_error.comp",
+        "spv.bfloat16_error.frag",
+        "spv.bufferhandle1.frag",
+        "spv.bufferhandle10.frag",
+        "spv.coopmat.comp",
+        "spv.coopmat_Error.comp",
+        "spv.coopmatKHR.comp",
+        "spv.coopmat_armlayout.comp",
+        "spv.coopmatKHR_arithmetic.comp",
+        "spv.coopmatKHR_arithmeticError.comp",
+        "spv.coopmatKHR_Error.comp",
+        "spv.coopmatKHR_constructor.comp",
+        "spv.coopmatKHR_constructorError.comp",
+        "spv.coopvec.comp",
+        "spv.coopvec2.comp",
+        "spv.coopvecloadstore.comp",
+        "spv.coopvec_Error.comp",
+        "spv.coopvecTraining.comp",
+        "spv.coopvecTraining_Error.comp",
+        "spv.intcoopmat.comp",
+        "spv.intrinsicsInteractWithCoopMat.comp",
+        "spv.replicate.comp",
+        "spv.replicatespec.comp",
+        "spv.atomicAdd.bufferReference.comp",
+        "spv.nontemporalbuffer.frag",
+        "spv.atomicFloat.comp",
     })),
     FileNameAsCustomTestSuffix
 );
@@ -626,6 +759,51 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.WorkgroupMemoryExplicitLayout.std140.comp",
         "spv.WorkgroupMemoryExplicitLayout.std430.comp",
         "spv.WorkgroupMemoryExplicitLayout.scalar.comp",
+
+        // SPV_EXT_mesh_shader
+        "spv.ext.meshShaderBuiltins.mesh",
+        "spv.ext.meshShaderBuiltinsShadingRate.mesh",
+        "spv.ext.meshShaderRedeclBuiltins.mesh",
+        "spv.ext.meshShaderTaskMem.mesh",
+        "spv.ext.meshShaderUserDefined.mesh",
+        "spv.ext.meshTaskShader.task",
+        "spv.atomiAddEXT.error.mesh",
+        "spv.atomiAddEXT.task",
+        "spv.460.subgroupEXT.task",
+        "spv.460.subgroupEXT.mesh",
+
+        // SPV_NV_shader_execution_reorder
+
+        "spv.nv.hitobject-errors.rgen",
+        "spv.nv.hitobject-allops.rgen",
+        "spv.nv.hitobject-allops.rchit",
+        "spv.nv.hitobject-allops.rmiss",
+
+
+        // SPV_NV_displacment_micromap
+
+        "spv.nv.dmm-allops.rgen",
+        "spv.nv.dmm-allops.rchit",
+        "spv.nv.dmm-allops.rahit",
+        "spv.nv.dmm-allops.mesh",
+        "spv.nv.dmm-allops.comp",
+
+        // SPV_NV_cluster_acceleration_structure
+        "spv.nv.cluster-allops.rgen",
+        "spv.nv.cluster-allops.rchit",
+        "spv.nv.cluster-allops.rmiss",
+        "spv.nv.cluster-allops.rahit",
+        "spv.nv.cluster-allops.frag",
+
+        // SPV_NV_linear_swept_spheres
+
+        "spv.nv.lss-allops.rgen",
+        "spv.nv.lss-allops.rchit",
+        "spv.nv.lss-allops.rmiss",
+        "spv.nv.lss-allops.frag",
+        "spv.nv.lss-spheregeomcap.rgen",
+        "spv.nv.lss-lssgeomcap.rgen",
+
     })),
     FileNameAsCustomTestSuffix
 );
@@ -636,7 +814,22 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ValuesIn(std::vector<std::string>({
         "spv.1.6.conditionalDiscard.frag",
         "spv.1.6.helperInvocation.frag",
+        "spv.1.6.helperInvocation.memmodel.frag",
         "spv.1.6.specConstant.comp",
+        "spv.1.6.samplerBuffer.frag",
+        "spv.1.6.separate.frag",
+        "spv.1.6.quad.frag",
+        "spv.coopmat2_constructor.comp",
+        "spv.coopmat2_error.comp",
+        "spv.coopmat2_tensor.comp",
+        "spv.1.6.nontemporalimage.frag",
+        "spv.noexplicitlayout.comp",
+        "spv.floate4m3.comp",
+        "spv.floate4m3.const.comp",
+        "spv.floate4m3_error.comp",
+        "spv.floate5m2.comp",
+        "spv.floate5m2.const.comp",
+        "spv.floate5m2_error.comp",
     })),
     FileNameAsCustomTestSuffix
 );
@@ -657,7 +850,7 @@ INSTANTIATE_TEST_SUITE_P(
         { "spv.register.autoassign.rangetest.frag", "main",
                 glslang::TQualifier::layoutBindingEnd-2,
                 glslang::TQualifier::layoutBindingEnd+5,
-                20, 30, true, false },
+                0, 20, 30, true, false },
     }),
     FileNameAsCustomTestSuffixIoMap
 );
@@ -680,7 +873,6 @@ INSTANTIATE_TEST_SUITE_P(
         "spv.460.vert",
         "spv.460.comp",
         "spv.atomic.comp",
-        "spv.atomicFloat.comp",
         "spv.atomicFloat_Error.comp",
         "spv.glFragColor.frag",
         "spv.rankShift.comp",
@@ -705,6 +897,7 @@ INSTANTIATE_TEST_SUITE_P(
         "vulkan.vert",
         "vulkan.comp",
         "samplerlessTextureFunctions.frag",
+        "spv.intrinsicsFakeEnable.vert",
         "spv.specConstArrayCheck.vert",
     })),
     FileNameAsCustomTestSuffix
@@ -728,6 +921,47 @@ INSTANTIATE_TEST_SUITE_P(
         "vulkan.ast.vert",
     })),
     FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, CompileVulkanToSpirvTestQCOM,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.qcom.tileShading.0.comp",
+        "spv.qcom.tileShading.1.comp",
+        "spv.qcom.es.tileShading.0.comp",
+        "spv.qcom.es.tileShading.1.comp",
+        "spv.qcom.es.tileShading.2.comp",
+        "spv.qcom.tileShading.0.frag",
+        "spv.qcom.tileShading.1.frag",
+        "spv.qcom.es.tileShading.0.frag",
+        "spv.qcom.es.tileShading.1.frag",
+    })),
+    FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, CompileVulkanToSpirv13TestQCOM,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.qcom.coopmatConversion.1.comp",
+        "spv.qcom.coopmatConversion.2.comp",
+    })),
+    FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, CompileVulkanToSpirv14TestQCOM,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.tpipSampleWeighted.frag",
+        "spv.tpipBoxFilter.frag",
+        "spv.tpipBlockMatchSSD.frag",
+        "spv.tpipBlockMatchSAD.frag",
+        "spv.tpipTextureArrays.frag",
+        "spv.tpipBlockMatchGatherSAD.frag",
+        "spv.tpipBlockMatchGatherSSD.frag",
+        "spv.tpipBlockMatchWindowSAD.frag",
+        "spv.tpipBlockMatchWindowSSD.frag",
+})),
+FileNameAsCustomTestSuffix
 );
 
 INSTANTIATE_TEST_SUITE_P(
@@ -778,6 +1012,8 @@ INSTANTIATE_TEST_SUITE_P(
     "spv.fragmentShaderBarycentric2.frag",
     "spv.computeShaderDerivatives.comp",
     "spv.computeShaderDerivatives2.comp",
+    "spv.computeShaderDerivativesSpec.comp",
+    "spv.computeShaderDerivativesSpec2.comp",
     "spv.shaderImageFootprint.frag",
     "spv.meshShaderBuiltins.mesh",
     "spv.meshShaderUserDefined.mesh",
@@ -791,6 +1027,7 @@ INSTANTIATE_TEST_SUITE_P(
     "spv.meshShaderRedeclPerViewBuiltins.mesh",
     "spv.meshTaskShader.task",
     "spv.perprimitiveNV.frag",
+    "spv.nvgpushader5.frag"
 })),
 FileNameAsCustomTestSuffix
 );
@@ -806,10 +1043,49 @@ INSTANTIATE_TEST_SUITE_P(
 })),
 FileNameAsCustomTestSuffix
 );
+
 INSTANTIATE_TEST_SUITE_P(
     Glsl, CompileUpgradeTextureToSampledTextureAndDropSamplersTest,
     ::testing::ValuesIn(std::vector<std::string>({
       "spv.texture.sampler.transform.frag",
+    })),
+    FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, GlslSpirvDebugInfoTest,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.pp.line.frag",
+    })),
+    FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, GlslNonSemanticShaderDebugInfoTest,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.debuginfo.glsl.vert",
+        "spv.debuginfo.glsl.frag",
+        "spv.debuginfo.glsl.comp",
+        "spv.debuginfo.glsl.geom",
+        "spv.debuginfo.glsl.tesc",
+        "spv.debuginfo.glsl.tese",
+        "spv.debuginfo.bufferref.glsl.frag",
+        "spv.debuginfo.const_params.glsl.comp",
+        "spv.debuginfo.scalar_types.glsl.frag",
+        "spv.debuginfo.rt_types.glsl.rgen",
+        "spv.debuginfo.include.glsl.frag",
+        "spv.debuginfo.multiline.glsl.frag",
+        "spv.debuginfo.implicit_br.glsl.frag",
+        "spv.debuginfo.non_ascii.glsl.frag",
+        "spv.debuginfo.continued.glsl.vert",
+    })),
+    FileNameAsCustomTestSuffix
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    Glsl, GlslNonSemanticShaderDebugInfoSpirv13Test,
+    ::testing::ValuesIn(std::vector<std::string>({
+        "spv.debuginfo.coopmatKHR.comp",
     })),
     FileNameAsCustomTestSuffix
 );

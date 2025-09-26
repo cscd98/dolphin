@@ -59,7 +59,7 @@
     <ClCompile Include="glslang\MachineIndependent\SymbolTable.cpp" />
     <ClCompile Include="glslang\MachineIndependent\Versions.cpp" />
     <ClCompile Include="glslang\OSDependent\Windows\ossource.cpp" />
-    <ClCompile Include="OGLCompilersDLL\InitializeDll.cpp" />
+    <ClCompile Include="glslang\ResourceLimits\ResourceLimits.cpp" />
     <ClCompile Include="SPIRV\disassemble.cpp" />
     <ClCompile Include="SPIRV\doc.cpp" />
     <ClCompile Include="SPIRV\GlslangToSpv.cpp" />
@@ -68,7 +68,6 @@
     <ClCompile Include="SPIRV\SpvBuilder.cpp" />
     <ClCompile Include="SPIRV\SpvPostProcess.cpp" />
     <ClCompile Include="SPIRV\SPVRemapper.cpp" />
-    <ClCompile Include="StandAlone\ResourceLimits.cpp" />
   </ItemGroup>
   <ItemGroup>
     <!--<ClInclude Include="glslang\HLSL\hlslAttributes.h" />
@@ -111,8 +110,8 @@
     <ClInclude Include="glslang\MachineIndependent\SymbolTable.h" />
     <ClInclude Include="glslang\MachineIndependent\Versions.h" />
     <ClInclude Include="glslang\OSDependent\osinclude.h" />
+    <ClInclude Include="glslang\ResourceLimits\ResourceLimits.h" />
     <ClInclude Include="glslang\Public\ShaderLang.h" />
-    <ClInclude Include="OGLCompilersDLL\InitializeDll.h" />
     <ClInclude Include="SPIRV\disassemble.h" />
     <ClInclude Include="SPIRV\doc.h" />
     <ClInclude Include="SPIRV\GLSL.std.450.h" />
@@ -123,7 +122,6 @@
     <ClInclude Include="SPIRV\SpvBuilder.h" />
     <ClInclude Include="SPIRV\spvIR.h" />
     <ClInclude Include="SPIRV\SPVRemapper.h" />
-    <ClInclude Include="StandAlone\ResourceLimits.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="glslang\MachineIndependent\glslang.y" />

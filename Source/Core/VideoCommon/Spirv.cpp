@@ -7,6 +7,7 @@
 #include "GlslangToSpv.h"
 #include "ResourceLimits.h"
 #include "disassemble.h"
+#include "glslang/MachineIndependent/localintermediate.h"
 
 #include "Common/FileUtil.h"
 #include "Common/Logging/Log.h"
@@ -39,7 +40,7 @@ bool InitializeGlslang()
 
 const TBuiltInResource* GetCompilerResourceLimits()
 {
-  return &glslang::DefaultTBuiltInResource;
+  return GetDefaultResources();
 }
 
 std::optional<SPIRV::CodeVector>

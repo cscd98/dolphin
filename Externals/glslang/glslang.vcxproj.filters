@@ -109,6 +109,9 @@
     <ClCompile Include="glslang\OSDependent\Windows\ossource.cpp">
       <Filter>glslang\OSDependant\Windows</Filter>
     </ClCompile>
+    <ClCompile Include="glslang\ResourceLimits\ResourceLimits.cpp">
+      <Filter>glslang\ResourceLimits</Filter>
+    </ClCompile>
     <ClCompile Include="SPIRV\disassemble.cpp">
       <Filter>SPIRV</Filter>
     </ClCompile>
@@ -133,12 +136,6 @@
     <ClCompile Include="SPIRV\SPVRemapper.cpp">
       <Filter>SPIRV</Filter>
     </ClCompile>
-    <ClCompile Include="StandAlone\ResourceLimits.cpp">
-      <Filter>StandAlone</Filter>
-    </ClCompile>
-    <ClCompile Include="OGLCompilersDLL\InitializeDll.cpp">
-      <Filter>OGLCompilersDLL</Filter>
-    </ClCompile>
     <ClCompile Include="glslang\MachineIndependent\iomapper.cpp">
       <Filter>glslang\MachineIndependant</Filter>
     </ClCompile>
@@ -147,8 +144,8 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="StandAlone\ResourceLimits.h">
-      <Filter>StandAlone</Filter>
+    <ClInclude Include="glslang\ResourceLimits\ResourceLimits.h">
+      <Filter>glslang\Include</Filter>
     </ClInclude>
     <ClInclude Include="glslang\Include\ShHandle.h">
       <Filter>glslang\Include</Filter>
@@ -264,9 +261,6 @@
     <ClInclude Include="SPIRV\SPVRemapper.h">
       <Filter>SPIRV</Filter>
     </ClInclude>
-    <ClInclude Include="OGLCompilersDLL\InitializeDll.h">
-      <Filter>OGLCompilersDLL</Filter>
-    </ClInclude>
     <ClInclude Include="glslang\MachineIndependent\iomapper.h">
       <Filter>glslang\MachineIndependant</Filter>
     </ClInclude>
@@ -301,9 +295,6 @@
     </Filter>
     <Filter Include="SPIRV">
       <UniqueIdentifier>{7039de2e-63ef-409d-a895-3c0dd307e201}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="OGLCompilersDLL">
-      <UniqueIdentifier>{8d950cfc-7fb5-4612-b23c-f4d569404955}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

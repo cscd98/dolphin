@@ -73,9 +73,9 @@ EShLanguage GetShaderStage(const std::string& stage)
     } else if (stage == "rcall") {
         return EShLangCallable;
     } else if (stage == "task") {
-        return EShLangTaskNV;
+        return EShLangTask;
     } else if (stage == "mesh") {
-        return EShLangMeshNV;
+        return EShLangMesh;
     } else {
         assert(0 && "Unknown shader stage");
         return EShLangCount;
@@ -116,7 +116,7 @@ EShMessages DeriveOptions(Source source, Semantics semantics, Target target)
             break;
     }
 
-    result = static_cast<EShMessages>(result | EShMsgHlslLegalization);
+    result = static_cast<EShMessages>(result | EShMsgHlslLegalization | EShMsgValidateCrossStageIO);
 
     return result;
 }

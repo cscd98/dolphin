@@ -36,7 +36,8 @@ set(SRCS
 	glslang/MachineIndependent/SpirvIntrinsics.cpp
 	glslang/MachineIndependent/SymbolTable.cpp
 	glslang/MachineIndependent/Versions.cpp
-	OGLCompilersDLL/InitializeDll.cpp
+	glslang/ResourceLimits/ResourceLimits.cpp
+	#OGLCompilersDLL/InitializeDll.cpp
 	SPIRV/disassemble.cpp
 	SPIRV/doc.cpp
 	SPIRV/GlslangToSpv.cpp
@@ -46,7 +47,6 @@ set(SRCS
 	SPIRV/SpvPostProcess.cpp
 	SPIRV/SPVRemapper.cpp
 	SPIRV/SpvTools.cpp
-	StandAlone/ResourceLimits.cpp
 )
 
 if(WIN32)
@@ -56,8 +56,31 @@ else()
 endif()
 
 if(NOT MSVC)
-# glslang requires C++11 at a minimum to compile.
-add_compile_options(-std=c++11)
+# glslang requires C++17 at a minimum to compile.
+add_compile_options(-std=c++17)
+
+# Root directory for build-time generated include files
+set(GLSLANG_GENERATED_INCLUDEDIR "${CMAKE_BINARY_DIR}/include")
+
+################################################################################
+# Build version information generation
+################################################################################
+include(parse_version.cmake)
+set(GLSLANG_CHANGES_FILE      "${CMAKE_CURRENT_SOURCE_DIR}/CHANGES.md")
+set(GLSLANG_BUILD_INFO_H_TMPL "${CMAKE_CURRENT_SOURCE_DIR}/build_info.h.tmpl")
+set(GLSLANG_BUILD_INFO_H      "${GLSLANG_GENERATED_INCLUDEDIR}/glslang/build_info.h")
+
+parse_version(${GLSLANG_CHANGES_FILE} GLSLANG)
+
+function(configurate_version)
+    set(major ${GLSLANG_VERSION_MAJOR})
+    set(minor ${GLSLANG_VERSION_MINOR})
+    set(patch ${GLSLANG_VERSION_PATCH})
+    set(flavor ${GLSLANG_VERSION_FLAVOR})
+    configure_file(${GLSLANG_BUILD_INFO_H_TMPL} ${GLSLANG_BUILD_INFO_H} @ONLY)
+endfunction()
+
+configurate_version()
 
 # Silence some warnings that occur frequently to reduce noise in build logs.
 add_compile_options(-Wno-shadow)
@@ -78,4 +101,5 @@ dolphin_disable_warnings(glslang)
 target_include_directories(glslang
 PRIVATE
 	${CMAKE_SOURCE_DIR}/Externals/glslang
+	${GLSLANG_GENERATED_INCLUDEDIR}
 )

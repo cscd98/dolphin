@@ -99,8 +99,7 @@ public:
 	JitArm()
   : JitBase(),
     blocks(*this),    // Pass required JitBase reference
-		asm_routines(*this),
-    code_buffer(32000)
+		asm_routines(*this)
 	{}
 	~JitArm() {}
 

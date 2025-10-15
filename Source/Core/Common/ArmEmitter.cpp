@@ -235,7 +235,7 @@ void ARMXEmitter::FlushLitPool()
 		// Write the constant to Literal Pool
 		if (!pool.loc)
 		{
-			pool.loc = (s32)code;
+			pool.loc = (s32)m_code;
 			Write32(pool.val);
 		}
 		s32 offset = pool.loc - (s32)pool.ldr_address - 8;
@@ -252,7 +252,7 @@ void ARMXEmitter::AddNewLit(u32 val)
 	LiteralPool pool_item;
 	pool_item.loc = 0;
 	pool_item.val = val;
-	pool_item.ldr_address = code;
+	pool_item.ldr_address = m_code;
 	currentLitPool.push_back(pool_item);
 }
 
@@ -302,21 +302,39 @@ void ARMXEmitter::QuickCallFunction(ARMReg reg, void *func)
 	}
 }
 
+void ARMXEmitter::SetCodePtrUnsafe(u8* ptr, u8* end, bool write_failed)
+{
+  m_code = ptr;
+  m_code_end = end;
+  m_write_failed = write_failed;
+}
+
+void ARMXEmitter::SetCodePtr(u8* ptr, u8* end, bool write_failed)
+{
+  SetCodePtrUnsafe(ptr, end, write_failed);
+  m_lastCacheFlushEnd = ptr;
+}
+
 void ARMXEmitter::SetCodePtr(u8 *ptr)
 {
-	code = ptr;
-	startcode = code;
-	lastCacheFlushEnd = ptr;
+	m_code = ptr;
+	startcode = m_code;
+	m_lastCacheFlushEnd = ptr;
+}
+
+void ARMXEmitter::SetCodePtrUnsafe(u8* ptr)
+{
+  m_code = ptr;
 }
 
 const u8 *ARMXEmitter::GetCodePtr() const
 {
-	return code;
+	return m_code;
 }
 
 u8 *ARMXEmitter::GetWritableCodePtr()
 {
-	return code;
+	return m_code;
 }
 
 void ARMXEmitter::ReserveCodeSpace(u32 bytes)
@@ -327,20 +345,20 @@ void ARMXEmitter::ReserveCodeSpace(u32 bytes)
 
 const u8 *ARMXEmitter::AlignCode16()
 {
-	ReserveCodeSpace((-(s32)code) & 15);
-	return code;
+	ReserveCodeSpace((-(s32)m_code) & 15);
+	return m_code;
 }
 
 const u8 *ARMXEmitter::AlignCodePage()
 {
-	ReserveCodeSpace((-(s32)code) & 4095);
-	return code;
+	ReserveCodeSpace((-(s32)m_code) & 4095);
+	return m_code;
 }
 
 void ARMXEmitter::FlushIcache()
 {
-	FlushIcacheSection(lastCacheFlushEnd, code);
-	lastCacheFlushEnd = code;
+	FlushIcacheSection(m_lastCacheFlushEnd, m_code);
+	m_lastCacheFlushEnd = m_code;
 }
 
 void ARMXEmitter::FlushIcacheSection(u8 *start, u8 *end)
@@ -414,7 +432,7 @@ FixupBranch ARMXEmitter::B()
 {
 	FixupBranch branch;
 	branch.type = 0; // Zero for B
-	branch.ptr = code;
+	branch.ptr = m_code;
 	branch.condition = condition;
 	//We'll write NOP here for now.
 	Write32(condition | 0x0320F000);
@@ -425,7 +443,7 @@ FixupBranch ARMXEmitter::BL()
 {
 	FixupBranch branch;
 	branch.type = 1; // Zero for B
-	branch.ptr = code;
+	branch.ptr = m_code;
 	branch.condition = condition;
 	//We'll write NOP here for now.
 	Write32(condition | 0x0320F000);
@@ -443,7 +461,7 @@ FixupBranch ARMXEmitter::B_CC(CCFlags Cond)
 {
 	FixupBranch branch;
 	branch.type = 0; // Zero for B
-	branch.ptr = code;
+	branch.ptr = m_code;
 	branch.condition = Cond << 28;
 	//We'll write NOP here for now.
 	Write32(condition | 0x0320F000);
@@ -451,9 +469,9 @@ FixupBranch ARMXEmitter::B_CC(CCFlags Cond)
 }
 void ARMXEmitter::B_CC(CCFlags Cond, const void *fnptr)
 {
-	s32 distance = (s32)fnptr - (s32(code) + 8);
+	s32 distance = (s32)fnptr - (s32(m_code) + 8);
 	ASSERT_MSG(DYNA_REC, distance > -0x2000000 && distance <= 0x2000000,
-	           "B_CC out of range ({} calls {})", fmt::ptr(code),
+	           "B_CC out of range ({} calls {})", fmt::ptr(m_code),
 						 fmt::ptr(fnptr));
 
 	Write32((Cond << 28) | 0x0A000000 | ((distance >> 2) & 0x00FFFFFF));
@@ -462,7 +480,7 @@ FixupBranch ARMXEmitter::BL_CC(CCFlags Cond)
 {
 	FixupBranch branch;
 	branch.type = 1; // Zero for B
-	branch.ptr = code;
+	branch.ptr = m_code;
 	branch.condition = Cond << 28;
 	//We'll write NOP here for now.
 	Write32(condition | 0x0320F000);
@@ -470,18 +488,18 @@ FixupBranch ARMXEmitter::BL_CC(CCFlags Cond)
 }
 void ARMXEmitter::SetJumpTarget(FixupBranch const &branch)
 {
-	s32 distance =  (s32(code) - 8)  - (s32)branch.ptr;
+	s32 distance =  (s32(m_code) - 8)  - (s32)branch.ptr;
 	ASSERT_MSG(DYNA_REC, distance > -0x2000000 && distance <= 0x2000000,
-	                 "SetJumpTarget out of range ({} calls {})", fmt::ptr(code), fmt::ptr(branch.ptr));
+	                 "SetJumpTarget out of range ({} calls {})", fmt::ptr(m_code), fmt::ptr(branch.ptr));
 	u32 instr = (u32)(branch.condition | ((distance >> 2) & 0x00FFFFFF));
 	instr |= (0 == branch.type) ? /* B */ 0x0A000000 : /* BL */ 0x0B000000;
 	*(u32*)branch.ptr = instr;
 }
 void ARMXEmitter::B(const void *fnptr)
 {
-	s32 distance = (s32)fnptr - (s32(code) + 8);
+	s32 distance = (s32)fnptr - (s32(m_code) + 8);
 	ASSERT_MSG(DYNA_REC, distance > -0x2000000 && distance <= 0x2000000,
-	                 "B out of range ({} calls {})", fmt::ptr(code), fmt::ptr(fnptr));
+	                 "B out of range ({} calls {})", fmt::ptr(m_code), fmt::ptr(fnptr));
 
 	Write32(condition | 0x0A000000 | ((distance >> 2) & 0x00FFFFFF));
 }
@@ -494,7 +512,7 @@ void ARMXEmitter::B(ARMReg src)
 FixupBranch ARMXEmitter::B(CCFlags cond)
 {
   FixupBranch branch;
-  branch.ptr = code;
+  branch.ptr = m_code;
   branch.type = 2;
   branch.condition = cond;
 
@@ -530,7 +548,7 @@ void ARMXEmitter::HINT(u32 opcode)
 
 bool ARMXEmitter::BLInRange(const void *fnptr)
 {
-	s32 distance = (s32)fnptr - (s32(code) + 8);
+	s32 distance = (s32)fnptr - (s32(m_code) + 8);
 	if (distance <= -0x2000000 || distance > 0x2000000)
 		return false;
 	else
@@ -539,9 +557,9 @@ bool ARMXEmitter::BLInRange(const void *fnptr)
 
 void ARMXEmitter::BL(const void *fnptr)
 {
-	s32 distance = (s32)fnptr - (s32(code) + 8);
+	s32 distance = (s32)fnptr - (s32(m_code) + 8);
 	ASSERT_MSG(DYNA_REC, distance > -0x2000000 && distance <= 0x2000000,
-	                 "BL out of range ({} calls {})", fmt::ptr(code), fmt::ptr(fnptr));
+	                 "BL out of range ({} calls {})", fmt::ptr(m_code), fmt::ptr(fnptr));
 	Write32(condition | 0x0B000000 | ((distance >> 2) & 0x00FFFFFF));
 }
 void ARMXEmitter::BL(ARMReg src)
@@ -1338,11 +1356,6 @@ void ARMXEmitter::VCVT(ARMReg Dest, ARMReg Source, int flags)
 		Write32(condition | (0x1D << 23) | ((Dest & 0x10) << 18) | (0x7 << 19) | ((flags & TO_INT) << 18) | (op2 << 16) \
 			| ((Dest & 0xF) << 12) | (1 << 8) | (op << 7) | (0x29 << 6) | ((Source & 0x10) << 1) | (Source & 0xF));
 	}
-}
-
-void ARMXEmitter::SetCodePtrUnsafe(u8* ptr)
-{
-  code = ptr;
 }
 
 void NEONXEmitter::VABA(u32 Size, ARMReg Vd, ARMReg Vn, ARMReg Vm)

@@ -330,8 +330,20 @@ class ARMXEmitter
 	friend struct OpArg;  // for Write8 etc
 	friend class NEONXEmitter;
 private:
-	u8 *code, *startcode;
-	u8 *lastCacheFlushEnd;
+	// Pointer to memory where code will be emitted to.
+	u8* m_code = nullptr;
+
+	// Pointer past the end of the memory region we're allowed to emit to.
+	// Writes that would reach this memory are refused and will set the m_write_failed flag instead.
+	u8* m_code_end = nullptr;
+
+	u8* m_lastCacheFlushEnd = nullptr;
+
+	// Set to true when a write request happens that would write past m_code_end.
+  // Must be cleared with SetCodePtr() afterwards.
+  bool m_write_failed = false;
+
+	u8 *startcode;
 	u32 condition;
 	std::vector<LiteralPool> currentLitPool;
 
@@ -349,22 +361,24 @@ private:
 	void WriteInstruction(u32 op, ARMReg Rd, ARMReg Rn, Operand2 Rm, bool SetFlags = false);
 
 protected:
-	inline void Write32(u32 value) {*(u32*)code = value; code+=4;}
+	inline void Write32(u32 value) {*(u32*)m_code = value; m_code+=4;}
 
 public:
-	ARMXEmitter() : code(nullptr), startcode(nullptr), lastCacheFlushEnd(nullptr) {
+	ARMXEmitter() : m_code(nullptr), startcode(nullptr), m_lastCacheFlushEnd(nullptr) {
 		condition = CC_AL << 28;
 	}
 	ARMXEmitter(u8* code_ptr) {
-		code = code_ptr;
-		lastCacheFlushEnd = code_ptr;
+		m_code = code_ptr;
+		m_lastCacheFlushEnd = code_ptr;
 		startcode = code_ptr;
 		condition = CC_AL << 28;
 	}
 	virtual ~ARMXEmitter() {}
 
-	void SetCodePtr(u8 *ptr);
-	void SetCodePtrUnsafe(u8* ptr);
+	void SetCodePtr(u8* ptr, u8* end, bool write_failed = false);
+  void SetCodePtrUnsafe(u8* ptr, u8* end, bool write_failed = false);
+	void SetCodePtr(u8* ptr); // TODO: remove - replaced upstream with above
+  void SetCodePtrUnsafe(u8* ptr); // TODO: remove - replaced upstream with above
 	void ReserveCodeSpace(u32 bytes);
 	const u8 *AlignCode16();
 	const u8 *AlignCodePage();

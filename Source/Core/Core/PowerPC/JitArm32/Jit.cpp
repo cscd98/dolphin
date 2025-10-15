@@ -6,7 +6,7 @@
 
 #include "Common/ArmEmitter.h"
 #include "Common/CommonTypes.h"
-#include "Common/File.h"
+#include "Common/IOFile.h"
 
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
@@ -19,7 +19,7 @@
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/PPCTables.h"
-#include "Core/PowerPC/Profiler.h"
+//#include "Core/PowerPC/Profiler.h"
 #include "Core/PowerPC/JitArm32/Jit.h"
 
 using namespace ArmGen;
@@ -129,7 +129,7 @@ static void ImHere()
 			return;
 	}
 
-	DEBUG_LOG(DYNA_REC, "I'm here - PC = %08x , LR = %08x", PC, LR);
+	DEBUG_LOG_FMT(DYNA_REC, "I'm here - PC = %08x , LR = %08x", PC, LR);
 	been_here[PC] = 1;
 }
 
@@ -260,7 +260,7 @@ void JitArm::Trace()
 	}
 #endif
 
-	DEBUG_LOG(DYNA_REC, "JIT64 PC: %08x SRR0: %08x SRR1: %08x FPSCR: %08x MSR: %08x LR: %08x %s %s",
+	DEBUG_LOG_FMT(DYNA_REC, "JIT64 PC: {:08x} SRR0: {:08x} SRR1: {:08x} FPSCR: {:08x} MSR: {:08x} LR: {:08x} {} {}",
 		PC, SRR0, SRR1, PowerPC::ppcState.fpscr, PowerPC::ppcState.msr, PowerPC::ppcState.spr[8], regs.c_str(), fregs.c_str());
 }
 
@@ -284,7 +284,7 @@ void JitArm::Jit(u32 em_address)
     NPC = nextPC;
     PowerPC::ppcState.Exceptions |= EXCEPTION_ISI;
     PowerPC::CheckExceptions();
-    WARN_LOG(POWERPC, "ISI exception at 0x%08x", nextPC);
+    WARN_LOG_FMT(POWERPC, "ISI exception at 0x{:08x}", nextPC);
     return;
   }
 
@@ -364,7 +364,7 @@ const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlo
 {
 	int blockSize = code_buf->size();
 
-	if (SConfig::GetInstance().bEnableDebugging)
+	if (IsDebuggingEnabled())
 	{
 		// Comment out the following to disable breakpoints (speed-up)
 		blockSize = 1;
@@ -449,7 +449,7 @@ const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlo
 	fpr.Start(js.fpa);
 	js.downcountAmount = 0;
 
-	if (!SConfig::GetInstance().bEnableDebugging)
+	if (IsDebuggingEnabled())
 		js.downcountAmount += PatchEngine::GetSpeedhackCycles(em_address);
 
 	js.skipInstructions = 0;

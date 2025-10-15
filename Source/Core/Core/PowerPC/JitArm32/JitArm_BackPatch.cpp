@@ -190,7 +190,7 @@ bool JitArm::DisasmLoadStore(const u8* ptr, u32* flags, ARMReg* rD, ARMReg* V1)
 bool JitArm::HandleFault(uintptr_t access_address, SContext* ctx)
 {
 	if (access_address < (uintptr_t)Memory::physical_base)
-		PanicAlertT("Exception handler - access below memory space. 0x%08x", access_address);
+		PanicAlertFmt("Exception handler - access below memory space. 0x{:08x}", access_address);
 	return BackPatch(ctx);
 }
 
@@ -207,7 +207,7 @@ bool JitArm::HandleFault(uintptr_t access_address, SContext* ctx)
 
 	if (!DisasmLoadStore(codePtr, &flags, &rD, &V1))
 	{
-		WARN_LOG(DYNA_REC, "Invalid backpatch at location 0x%08lx(0x%08x)", ctx->CTX_PC, Value);
+		WARN_LOG_FMT(DYNA_REC, "Invalid backpatch at location 0x%08lx(0x%08x)", ctx->CTX_PC, Value);
 		exit(0);
 	}
 
@@ -233,7 +233,7 @@ bool JitArm::BackPatch(SContext* ctx)
 
     if (!DisasmLoadStore(codePtr, &flags, &rD, &V1))
     {
-        WARN_LOG(DYNA_REC, "Invalid backpatch at location 0x%08lx (0x%08x)", ctx->CTX_PC, value);
+        WARN_LOG_FMT(DYNA_REC, "Invalid backpatch at location 0x{:08lx} (0x{:08x})", ctx->CTX_PC, value);
         return false;
     }
 

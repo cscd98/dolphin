@@ -7,6 +7,7 @@
 
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
+#include "Core/Config/MainSettings.h"
 #include "Core/HW/CPU.h"
 #include "Core/HW/GPFifo.h"
 #include "Core/HW/Memmap.h"
@@ -15,6 +16,7 @@
 #include "Core/PowerPC/JitArm32/Jit.h"
 #include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitCommon/JitCache.h"
+
 
 using namespace ArmGen;
 
@@ -62,7 +64,7 @@ void JitArmAsmRoutineManager::Generate()
     FixupBranch bail = B_CC(CC_MI);
 
     FixupBranch dbg_exit;
-    if (SConfig::GetInstance().bEnableDebugging)
+    if (Config::IsDebuggingEnabled())
     {
 			MOVI2R(R0, reinterpret_cast<uintptr_t>(&PowerPC::ppcState));
       LDR(R0, R0);
@@ -120,7 +122,7 @@ void JitArmAsmRoutineManager::Generate()
     B(dispatcher);
 
     SetJumpTarget(Exit);
-    if (SConfig::GetInstance().bEnableDebugging)
+    if (Config::IsDebuggingEnabled())
         SetJumpTarget(dbg_exit);
 
     ADD(_SP, _SP, 4);

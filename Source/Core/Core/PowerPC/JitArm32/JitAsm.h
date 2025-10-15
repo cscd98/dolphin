@@ -23,7 +23,7 @@ public:
 	{
 		AllocCodeSpace(8192);
 		Generate();
-		WriteProtect();
+		WriteProtect(true);
 	}
 
 	void Shutdown()

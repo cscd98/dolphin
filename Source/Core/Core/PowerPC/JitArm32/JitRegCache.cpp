@@ -85,7 +85,7 @@ ARMReg ArmRegCache::GetReg(bool AutoLock)
 	}
 
 	// Uh Oh, we have all them locked....
-	ASSERT_MSG(_DYNA_REC_, false, "All available registers are locked dumb dumb");
+	ASSERT_MSG(DYNA_REC, false, "All available registers are locked dumb dumb");
 	return R0;
 }
 
@@ -95,7 +95,7 @@ void ArmRegCache::Unlock(ARMReg R0, ARMReg R1, ARMReg R2, ARMReg R3)
 	{
 		if (ArmRegs[RegNum].Reg == R0)
 		{
-			ASSERT_MSG(_DYNA_REC, !ArmRegs[RegNum].free, "This register is already unlocked");
+			ASSERT_MSG(DYNA_REC, !ArmRegs[RegNum].free, "This register is already unlocked");
 			ArmRegs[RegNum].free = true;
 		}
 

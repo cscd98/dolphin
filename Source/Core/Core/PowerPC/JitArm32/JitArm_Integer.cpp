@@ -374,7 +374,7 @@ void JitArm::arith(UGeckoInstruction inst)
 			}
 		break;
 		default:
-			WARN_LOG(DYNA_REC, "Unknown OPCD %d with arith function", inst.OPCD);
+			WARN_LOG_FMT(DYNA_REC, "Unknown OPCD {} with arith function", inst.OPCD);
 			FALLBACK_IF(true);
 		break;
 	}

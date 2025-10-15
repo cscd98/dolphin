@@ -109,7 +109,7 @@ void JitArmAsmRoutineManager::Generate()
 
     LDR(R0, R9, PPCSTATE_OFF(pc));
     STR(R0, R9, PPCSTATE_OFF(npc));
-    QuickCallFunction(R14, reinterpret_cast<void*>(&PowerPC::CheckExceptions));
+    QuickCallFunction(R14, reinterpret_cast<void*>(&PowerPC::CheckExceptionsFromJIT));
     LDR(R0, R9, PPCSTATE_OFF(npc));
     STR(R0, R9, PPCSTATE_OFF(pc));
 

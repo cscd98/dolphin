@@ -333,6 +333,8 @@ private:
 	// Pointer to memory where code will be emitted to.
 	u8* m_code = nullptr;
 
+	u8 *startcode; // TODO: WEBOS replace?
+
 	// Pointer past the end of the memory region we're allowed to emit to.
 	// Writes that would reach this memory are refused and will set the m_write_failed flag instead.
 	u8* m_code_end = nullptr;
@@ -343,7 +345,6 @@ private:
   // Must be cleared with SetCodePtr() afterwards.
   bool m_write_failed = false;
 
-	u8 *startcode;
 	u32 condition;
 	std::vector<LiteralPool> currentLitPool;
 

@@ -31,28 +31,27 @@
 //#define PPCSTATE_OFF(elem) ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
 
 // Some asserts to make sure we will be able to load everything
+// TODO WEBOS: static asserts??
 //static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
 //static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020, "VLDR can't reach all of the FPRs");
 //static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
 
 #include <cstddef>
 
-#define PPCSTATE_OFF(elem) ((s32)offsetof(PowerPC::PowerPCState, elem) - (s32)offsetof(PowerPC::PowerPCState, spr[0]))
+#define PPCSTATE_PTR (&Core::System::GetInstance().GetPPCState())
+
+#define PPCSTATE_OFF(elem) \
+  (static_cast<int32_t>(reinterpret_cast<intptr_t>(&PPCSTATE_PTR->elem) - \
+                        reinterpret_cast<intptr_t>(&PPCSTATE_PTR->spr[0])))
 
 #define PPCSTATE_OFF_ARRAY(elem, i) \
-  ((s32)(offsetof(PowerPC::PowerPCState, elem[0]) + sizeof(PowerPC::PowerPCState::elem[0]) * (i)))
+  (static_cast<int32_t>(reinterpret_cast<intptr_t>(&PPCSTATE_PTR->elem[i]) - \
+                        reinterpret_cast<intptr_t>(&PPCSTATE_PTR->spr[0])))
 
 #define PPCSTATE_OFF_PS0(i) \
-  (PPCSTATE_OFF_ARRAY(ps, i) + (s32)offsetof(PowerPC::PairedSingle, ps0))
-
-// Some asserts to make sure we will be able to load everything
-static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
-static_assert(PPCSTATE_OFF_PS0(0) >= -1020 && PPCSTATE_OFF_PS0(0) <= 1020, "VLDR can't reach all of the FPRs");
-static_assert((PPCSTATE_OFF_PS0(0) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
-
-#define PPCSTATE_RUNTIME_OFFSET(expr) \
-  ((intptr_t)(reinterpret_cast<const char*>(&(PowerPC::ppcState.expr))) - \
-   (intptr_t)(reinterpret_cast<const char*>(&PowerPC::ppcState.spr[0])))
+  (PPCSTATE_OFF_ARRAY(ps, i) + static_cast<int32_t>(offsetof(PowerPC::PairedSingle, ps0)))
+#define PPCSTATE_OFF_PS1(i) \
+  (PPCSTATE_OFF_ARRAY(ps, i) + static_cast<int32_t>(offsetof(PowerPC::PairedSingle, ps1)))
 
 class JitArm : public JitBase, public ArmGen::ARMCodeBlock, public CommonAsmRoutinesBase
 {
@@ -94,10 +93,11 @@ private:
 	// Zero if it isn't a fastmem routine
 	u32 EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, bool fastmem, bool do_padding, ArmGen::ARMReg RS, ArmGen::ARMReg V1 = ArmGen::ARMReg::INVALID_REG);
 	JitBlock* GetBlockFromAddress(u32 address);
+  static void ImHere(JitArm& jit);
 
 public:
-	JitArm()
-  : JitBase(),
+	JitArm(Core::System& system)
+  : JitBase(system),
     blocks(*this),    // Pass required JitBase reference
 		asm_routines(*this)
 	{}

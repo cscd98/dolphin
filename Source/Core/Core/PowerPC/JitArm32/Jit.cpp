@@ -8,6 +8,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/IOFile.h"
 
+#include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
@@ -19,8 +20,11 @@
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/PPCTables.h"
+#include "Core/PowerPC/Interpreter/Interpreter.h"
 //#include "Core/PowerPC/Profiler.h"
 #include "Core/PowerPC/JitArm32/Jit.h"
+#include "Core/Core.h"
+#include "Core/System.h"
 
 using namespace ArmGen;
 
@@ -30,7 +34,7 @@ constexpr size_t FARCODE_SIZE_MMU = 1024 * 1024 * 48;
 
 void JitArm::Init()
 {
-	size_t child_code_size = SConfig::GetInstance().bMMU ? FARCODE_SIZE_MMU : FARCODE_SIZE;
+	size_t child_code_size = Config::Get(Config::MAIN_MMU) ? FARCODE_SIZE_MMU : FARCODE_SIZE;
   AllocCodeSpace(CODE_SIZE + child_code_size);
   AddChildCodeSpace(&farcode, child_code_size);
 
@@ -40,7 +44,7 @@ void JitArm::Init()
 	fpr.Init(this);
 	jo.enableBlocklink = true;
 	jo.optimizeGatherPipe = true;
-	UpdateMemoryOptions();
+	RefreshConfig();
 
 	code_block.m_stats = &js.st;
 	code_block.m_gpa = &js.gpa;
@@ -51,9 +55,9 @@ void JitArm::Init()
 	// Disable all loadstores
 	// Ever since the MMU has been optimized for x86, loadstores on ARMv7 have been knackered
 	// XXX: Investigate exactly why these are broken
-	SConfig::GetInstance().bJITLoadStoreOff = true;
-	SConfig::GetInstance().bJITLoadStoreFloatingOff = true;
-	SConfig::GetInstance().bJITLoadStorePairedOff= true;
+	Config::SetCurrent(Config::MAIN_DEBUG_JIT_LOAD_STORE_OFF, true);
+	Config::SetCurrent(Config::MAIN_DEBUG_JIT_LOAD_STORE_FLOATING_OFF, true);
+	Config::SetCurrent(Config::MAIN_DEBUG_JIT_LOAD_STORE_PAIRED_OFF, true);
 }
 
 void JitArm::ClearCache()
@@ -61,7 +65,7 @@ void JitArm::ClearCache()
 	ClearCodeSpace();
 	blocks.Clear();
 	farcode.ClearCodeSpace();
-	UpdateMemoryOptions();
+	RefreshConfig();
 }
 
 void JitArm::Shutdown()
@@ -76,7 +80,7 @@ void JitArm::WriteCallInterpreter(UGeckoInstruction inst)
 {
 	gpr.Flush();
 	fpr.Flush();
-	Interpreter::Instruction instr = PPCTables::GetInterpreterOp(inst);
+	Interpreter::Instruction instr = Interpreter::GetInterpreterOp(inst);
 	MOVI2R(R0, inst.hex);
 	MOVI2R(R12, (u32)instr);
 	BL(R12);
@@ -110,8 +114,9 @@ static const bool ImHereDebug = false;
 static const bool ImHereLog = false;
 static std::map<u32, int> been_here;
 
-static void ImHere()
+void JitArm::ImHere(JitArm& jit)
 {
+	auto& ppc_state = jit.m_ppc_state;
 	static File::IOFile f;
 	if (ImHereLog)
 	{
@@ -119,18 +124,18 @@ static void ImHere()
 		{
 			f.Open("log32.txt", "w");
 		}
-		fprintf(f.GetHandle(), "%08x\n", PC);
+		fprintf(f.GetHandle(), "%08x\n", ppc_state.pc);
 	}
 
-	if (been_here.find(PC) != been_here.end())
+	if (been_here.find(ppc_state.pc) != been_here.end())
 	{
-		been_here.find(PC)->second++;
-		if ((been_here.find(PC)->second) & 1023)
+		been_here.find(ppc_state.pc)->second++;
+		if ((been_here.find(ppc_state.pc)->second) & 1023)
 			return;
 	}
 
-	DEBUG_LOG_FMT(DYNA_REC, "I'm here - PC = %08x , LR = %08x", PC, LR);
-	been_here[PC] = 1;
+	DEBUG_LOG_FMT(DYNA_REC, "I'm here - PC = {:08x}, LR = {:08x}", ppc_state.pc, LR(ppc_state));
+	been_here[ppc_state.pc] = 1;
 }
 
 void JitArm::Cleanup()
@@ -181,7 +186,7 @@ void JitArm::WriteRfiExitDestInR(ARMReg Reg)
 
 	LDR(A, R9, PPCSTATE_OFF(pc));
 	STR(A, R9, PPCSTATE_OFF(npc));
-		QuickCallFunction(A, (void*)&PowerPC::CheckExceptions);
+		QuickCallFunction(A, (void*)&PowerPC::CheckExceptionsFromJIT);
 	LDR(A, R9, PPCSTATE_OFF(npc));
 	STR(A, R9, PPCSTATE_OFF(pc));
 	gpr.Unlock(Reg); // This was locked in the instruction beforehand
@@ -199,7 +204,7 @@ void JitArm::WriteExceptionExit()
 
 	LDR(A, R9, PPCSTATE_OFF(pc));
 	STR(A, R9, PPCSTATE_OFF(npc));
-		QuickCallFunction(A, (void*)&PowerPC::CheckExceptions);
+		QuickCallFunction(A, (void*)&PowerPC::CheckExceptionsFromJIT);
 	LDR(A, R9, PPCSTATE_OFF(npc));
 	STR(A, R9, PPCSTATE_OFF(pc));
 
@@ -260,8 +265,11 @@ void JitArm::Trace()
 	}
 #endif
 
-	DEBUG_LOG_FMT(DYNA_REC, "JIT64 PC: {:08x} SRR0: {:08x} SRR1: {:08x} FPSCR: {:08x} MSR: {:08x} LR: {:08x} {} {}",
-		PC, SRR0, SRR1, PowerPC::ppcState.fpscr, PowerPC::ppcState.msr, PowerPC::ppcState.spr[8], regs.c_str(), fregs.c_str());
+	DEBUG_LOG_FMT(DYNA_REC,
+		"JITARM PC: {:08x} SRR0: {:08x} SRR1: {:08x} FPSCR: {:08x} "
+		"MSR: {:08x} LR: {:08x} {} {}",
+		m_ppc_state.pc, SRR0(m_ppc_state), SRR1(m_ppc_state), m_ppc_state.fpscr.Hex,
+		m_ppc_state.msr.Hex, m_ppc_state.spr[8], regs, fregs);
 }
 
 void JitArm::Jit(u32 em_address)
@@ -281,21 +289,22 @@ void JitArm::Jit(u32 em_address)
   if (code_block.m_memory_exception)
   {
     // Address of instruction could not be translated
-    NPC = nextPC;
-    PowerPC::ppcState.Exceptions |= EXCEPTION_ISI;
-    PowerPC::CheckExceptions();
+    m_ppc_state.npc = nextPC;
+		m_ppc_state.Exceptions |= EXCEPTION_ISI;
+    m_system.GetPowerPC().CheckExceptions();
+		// WEBOS TODO: update membase?
     WARN_LOG_FMT(POWERPC, "ISI exception at 0x{:08x}", nextPC);
     return;
   }
 
 	JitBlock* b = blocks.AllocateBlock(em_address);
-	const u8* BlockPtr = DoJit(PowerPC::ppcState.pc, &code_buffer, b);
-	blocks.FinalizeBlock(*b, jo.enableBlocklink, code_block.m_physical_addresses);
+	const u8* BlockPtr = DoJit(m_ppc_state.pc, &code_buffer, b);
+	blocks.FinalizeBlock(*b, jo.enableBlocklink, code_block, m_code_buffer);
 }
 
 void JitArm::Break(UGeckoInstruction inst)
 {
-	ERROR_LOG_FMT(DYNA_REC, "{} called a Break instruction!", PPCTables::GetInstructionName(inst));
+	ERROR_LOG_FMT(DYNA_REC, "{} called a Break instruction!", inst.hex);
 	BKPT(0x4444);
 }
 
@@ -372,8 +381,8 @@ const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlo
 
 	if (em_address == 0)
 	{
-		Core::SetState(Core::State::Paused);
-		PanicAlert("ERROR: Compiling at 0. LR=%08x CTR=%08x", LR, CTR);
+		Core::SetState(Core::System::GetInstance(), Core::State::Paused);
+		PanicAlertFmt("ERROR: Compiling at 0. LR={:08x} CTR={:08x}", LR, CTR);
 	}
 
 	js.isLastInstruction = false;
@@ -422,7 +431,7 @@ const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlo
 		LDR(A, R9, PPCSTATE_OFF(Exceptions));
 		ORR(A, A, EXCEPTION_FPU_UNAVAILABLE);
 		STR(A, R9, PPCSTATE_OFF(Exceptions));
-			QuickCallFunction(A, (void*)&PowerPC::CheckExceptions);
+			QuickCallFunction(A, (void*)&PowerPC::CheckExceptionsFromJIT);
 		LDR(A, R9, PPCSTATE_OFF(npc));
 		STR(A, R9, PPCSTATE_OFF(pc));
 

@@ -141,6 +141,7 @@ protected:
 
 #endif
 
+#ifdef HAS_VULKAN
 namespace Vk
 {
 const VkApplicationInfo* GetApplicationInfo(void);
@@ -158,6 +159,7 @@ bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysical
                   const char** required_device_layers, unsigned num_required_device_layers,
                   const VkPhysicalDeviceFeatures* required_features);
 } // namespace Vk
+#endif
 
 }  // namespace Video
 }  // namespace Libretro

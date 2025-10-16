@@ -229,9 +229,21 @@ bool retro_load_game(const struct retro_game_info* game)
   std::vector<std::string> normalized_game_paths;
   normalized_game_paths.push_back(Libretro::NormalizePath(game->path));
   std::string folder_path;
+  std::string filename;
   std::string extension;
-  SplitPath(normalized_game_paths.front(), &folder_path, nullptr, &extension);
+  SplitPath(normalized_game_paths.front(), &folder_path, &filename, &extension);
   std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+
+#ifdef _WIN32
+  // If SplitPath only gave us "D:", rebuild the real directory from the full path
+  if (folder_path.size() == 2 && folder_path[1] == ':')
+  {
+    // take everything up to the last backslash
+    size_t last_slash = normalized_game_paths.front().find_last_of("\\/");
+    if (last_slash != std::string::npos)
+      folder_path = normalized_game_paths.front().substr(0, last_slash + 1);
+  }
+#endif
 
   if (extension == ".m3u" || extension == ".m3u8")
   {

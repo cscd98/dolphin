@@ -233,6 +233,9 @@ bool retro_load_game(const struct retro_game_info* game)
   SplitPath(normalized_game_paths.front(), &folder_path, nullptr, &extension);
   std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
 
+  if (folder_path.size() == 2 && folder_path[1] == ':')
+    folder_path.push_back('\\');
+
   if (extension == ".m3u" || extension == ".m3u8")
   {
     normalized_game_paths = ReadM3UFile(normalized_game_paths.front(), folder_path);

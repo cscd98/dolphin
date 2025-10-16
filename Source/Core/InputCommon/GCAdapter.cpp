@@ -169,6 +169,7 @@ static std::optional<Config::ConfigChangedCallbackID> s_config_callback_id = std
 static bool s_is_adapter_wanted = false;
 static std::array<bool, SerialInterface::MAX_SI_CHANNELS> s_config_rumble_enabled{};
 
+#if GCADAPTER_USE_LIBUSB_IMPLEMENTATION || GCADAPTER_USE_ANDROID_IMPLEMENTATION
 static void ReadThreadFunc()
 {
   Common::SetCurrentThreadName("GCAdapter Read Thread");
@@ -267,7 +268,9 @@ static void ReadThreadFunc()
 
   NOTICE_LOG_FMT(CONTROLLERINTERFACE, "GCAdapter read thread stopped");
 }
+#endif
 
+#if GCADAPTER_USE_LIBUSB_IMPLEMENTATION || GCADAPTER_USE_ANDROID_IMPLEMENTATION
 static void WriteThreadFunc()
 {
   Common::SetCurrentThreadName("GCAdapter Write Thread");
@@ -315,6 +318,7 @@ static void WriteThreadFunc()
 
   NOTICE_LOG_FMT(CONTROLLERINTERFACE, "GCAdapter write thread stopped");
 }
+#endif
 
 #if GCADAPTER_USE_LIBUSB_IMPLEMENTATION
 #if LIBUSB_API_HAS_HOTPLUG
@@ -514,6 +518,7 @@ void StopScanThread()
   }
 }
 
+#if GCADAPTER_USE_LIBUSB_IMPLEMENTATION || GCADAPTER_USE_ANDROID_IMPLEMENTATION
 static void Setup()
 {
 #if GCADAPTER_USE_LIBUSB_IMPLEMENTATION
@@ -553,6 +558,7 @@ static void Setup()
   s_read_adapter_thread = std::thread(ReadThreadFunc);
 #endif
 }
+#endif
 
 #if GCADAPTER_USE_LIBUSB_IMPLEMENTATION
 static bool CheckDeviceAccess(libusb_device* device)
@@ -802,6 +808,7 @@ GCPadStatus Input(int chan)
 }
 
 // Get ControllerType from first byte in input payload.
+#if GCADAPTER_USE_LIBUSB_IMPLEMENTATION || GCADAPTER_USE_ANDROID_IMPLEMENTATION
 static ControllerType IdentifyControllerType(u8 data)
 {
   if (Common::ExtractBit<4>(data))
@@ -812,7 +819,9 @@ static ControllerType IdentifyControllerType(u8 data)
 
   return ControllerType::None;
 }
+#endif
 
+#if GCADAPTER_USE_LIBUSB_IMPLEMENTATION || GCADAPTER_USE_ANDROID_IMPLEMENTATION
 void ProcessInputPayload(const u8* data, std::size_t size)
 {
   if (size != CONTROLLER_INPUT_PAYLOAD_EXPECTED_SIZE
@@ -901,6 +910,7 @@ void ProcessInputPayload(const u8* data, std::size_t size)
     }
   }
 }
+#endif
 
 bool DeviceConnected(int chan)
 {
@@ -1013,10 +1023,10 @@ bool IsDetected(const char** error_message)
   if (error_message)
     *error_message = libusb_strerror(s_adapter_error.load());
 
-  return false;
 #elif GCADAPTER_USE_ANDROID_IMPLEMENTATION
   return s_detected;
 #endif
+  return false;
 }
 
 }  // namespace GCAdapter

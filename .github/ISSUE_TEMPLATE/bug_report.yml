@@ -47,7 +47,8 @@ body:
         - OpenGL/OpenGLES
         - D3D11
         - Other
-      default: Vulkan
+    validations:
+      required: true
 
   - type: input
     id: game

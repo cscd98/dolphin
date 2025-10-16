@@ -54,6 +54,7 @@ body:
         - OpenGL/OpenGLES
         - D3D11
         - Other
+      default: Vulkan
 
   - type: input
     id: game

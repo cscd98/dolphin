@@ -116,6 +116,7 @@ bool retro_load_game(const struct retro_game_info* game)
 //#else
   Config::SetCurrent(Config::MAIN_FASTMEM, Libretro::Options::fastmem);
 //#endif
+  Config::SetCurrent(Config::MAIN_CPU_CORE, Libretro::Options::cpu_core);
   Config::SetCurrent(Config::MAIN_DSP_HLE, Libretro::Options::DSPHLE);
   Config::SetCurrent(Config::MAIN_DSP_JIT, Libretro::Options::DSPEnableJIT);
   Config::SetCurrent(Config::MAIN_GC_LANGUAGE, (int)(DiscIO::Language)Libretro::Options::Language - 1);
@@ -134,7 +135,8 @@ bool retro_load_game(const struct retro_game_info* game)
   Config::SetCurrent(Config::MAIN_FAST_DISC_SPEED, Libretro::Options::fastDiscSpeed);
   Config::SetCurrent(Config::MAIN_TIME_TRACKING, false);
 
-  Libretro::Options::cpu_core.FilterForJitCapability();
+#ifdef IPHONEOS
+  //Libretro::Options::cpu_core.FilterForJitCapability();
   bool can_jit = false;
   if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_JIT_CAPABLE, &can_jit) || !can_jit)
   {
@@ -144,13 +146,10 @@ bool retro_load_game(const struct retro_game_info* game)
     {
       Config::SetCurrent(Config::MAIN_CPU_CORE, PowerPC::CPUCore::CachedInterpreter);
     }
-#ifdef IPHONEOS
+
     Config::SetCurrent(Config::GFX_VERTEX_LOADER_TYPE, VertexLoaderType::Software);
-#endif
-  } else
-  {
-    Config::SetCurrent(Config::MAIN_CPU_CORE, Libretro::Options::cpu_core);
   }
+#endif
 
   Config::SetBase(Config::SYSCONF_LANGUAGE, (u32)(DiscIO::Language)Libretro::Options::Language);
   Config::SetBase(Config::SYSCONF_WIDESCREEN, Libretro::Options::Widescreen);

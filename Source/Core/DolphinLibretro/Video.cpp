@@ -228,10 +228,16 @@ void ContextReset(void)
     DX11::D3D::feature_level = d3d->featureLevel;
     D3DCommon::d3d_compile = d3d->D3DCompile;
 
-    if (!d3d11_library.Open("d3d11.dll") || !D3DCommon::LoadLibraries())
+    if (!d3d11_library.IsOpen() && !d3d11_library.Open("d3d11.dll"))
     {
       d3d11_library.Close();
       ERROR_LOG_FMT(VIDEO, "Failed to load D3D11 Libraries");
+      return;
+    }
+
+    if (!D3DCommon::LoadLibraries())
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to load dxgi or d3dcompiler Libraries");
       return;
     }
 
@@ -257,12 +263,15 @@ void ContextReset(void)
     auto perf_query = std::make_unique<DX11::PerfQuery>();
     auto bounding_box = std::make_unique<DX11::D3DBoundingBox>();
 
-    d3d11->InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
-                            std::move(bounding_box));
+    if(d3d11->InitializeShared(std::move(gfx), std::move(vertex_manager), std::move(perf_query),
+                               std::move(bounding_box)))
+      g_context_status.MarkInitialized();
+
     return;
   }
 #endif
-  Video_InitializeBackend();
+  if(Video_InitializeBackend())
+    g_context_status.MarkInitialized();
 }
 
 bool Video_InitializeBackend()
@@ -366,8 +375,11 @@ void ContextDestroy(void)
   {
   case RETRO_HW_CONTEXT_D3D11:
 #ifdef _WIN32
-    DX11::D3D::context->ClearState();
-    DX11::D3D::context->Flush();
+    if (DX11::D3D::context)
+    {
+      DX11::D3D::context->ClearState();
+      DX11::D3D::context->Flush();
+    }
 
     DX11::D3D::context.Reset();
     DX11::D3D::device1.Reset();

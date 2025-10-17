@@ -66,6 +66,9 @@
 #include "VideoCommon/VideoState.h"
 #include "VideoCommon/Widescreen.h"
 #include "VideoCommon/XFStateManager.h"
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/VideoContexts/ContextStatus.h"
+#endif
 
 VideoBackendBase* g_video_backend = nullptr;
 
@@ -285,10 +288,17 @@ bool VideoBackendBase::InitializeShared(std::unique_ptr<AbstractGfx> gfx,
                                         std::unique_ptr<EFBInterfaceBase> efb_interface,
                                         std::unique_ptr<TextureCacheBase> texture_cache)
 {
-  memset(reinterpret_cast<u8*>(&g_main_cp_state), 0, sizeof(g_main_cp_state));
-  memset(reinterpret_cast<u8*>(&g_preprocess_cp_state), 0, sizeof(g_preprocess_cp_state));
-  s_tex_mem.fill(0);
-
+#ifdef __LIBRETRO__
+  const bool is_initialized = g_context_status.IsInitialized();
+  if(!is_initialized)
+  {
+#endif
+    memset(reinterpret_cast<u8*>(&g_main_cp_state), 0, sizeof(g_main_cp_state));
+    memset(reinterpret_cast<u8*>(&g_preprocess_cp_state), 0, sizeof(g_preprocess_cp_state));
+    s_tex_mem.fill(0);
+#ifdef __LIBRETRO__
+  }
+#endif
   // do not initialize again for the config window
   m_initialized = true;
 
@@ -319,6 +329,10 @@ bool VideoBackendBase::InitializeShared(std::unique_ptr<AbstractGfx> gfx,
     return false;
   }
 
+#ifdef __LIBRETRO__
+  if(is_initialized)
+    return true;
+#endif
   auto& system = Core::System::GetInstance();
   auto& command_processor = system.GetCommandProcessor();
   command_processor.Init();
@@ -349,9 +363,10 @@ bool VideoBackendBase::InitializeShared(std::unique_ptr<AbstractGfx> gfx,
 
 void VideoBackendBase::ShutdownShared()
 {
+#ifndef __LIBRETRO__
   auto& system = Core::System::GetInstance();
   system.GetCustomResourceManager().Shutdown();
-
+#endif
   g_frame_dumper.reset();
   g_presenter.reset();
 
@@ -374,5 +389,7 @@ void VideoBackendBase::ShutdownShared()
   m_initialized = false;
 
   VertexLoaderManager::Clear();
+#ifndef __LIBRETRO__
   system.GetFifo().Shutdown();
+#endif
 }

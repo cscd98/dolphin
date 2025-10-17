@@ -22,12 +22,15 @@
 #include "DolphinLibretro/Log.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
+#include "DolphinLibretro/VideoContexts/ContextStatus.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "UICommon/DiscordPresence.h"
 #include "UICommon/UICommon.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/Assets/CustomResourceManager.h"
+#include "VideoCommon/Fifo.h"
 
 #ifdef _MSC_VER
 #include <filesystem>
@@ -285,11 +288,16 @@ void retro_unload_game(void)
     Core::Shutdown(Core::System::GetInstance());
   }
 
-  if (g_video_backend)
-  {
+  if (!g_context_status.IsDestroyed() && g_video_backend)
     g_video_backend->Shutdown();
-  }
 
+  // these are disabled in Shutdown on fullscreen/window toggle
+  auto& system = Core::System::GetInstance();
+  system.GetCustomResourceManager().Shutdown();
+  system.GetFifo().Shutdown();
+
+  // Rest of shutdown
+  g_context_status.MarkUnitialized();
   Libretro::Input::Shutdown();
   Libretro::Log::Shutdown();
   UICommon::ShutdownControllers();

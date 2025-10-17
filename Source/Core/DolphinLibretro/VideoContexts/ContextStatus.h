@@ -9,6 +9,7 @@ enum class ContextState
 
 struct ContextStatus
 {
+  bool initialized = false;
   ContextState state = ContextState::Unknown;
 
   void MarkReset()     { state = ContextState::Reset; }
@@ -16,6 +17,10 @@ struct ContextStatus
 
   bool IsReady() const     { return state == ContextState::Reset; }
   bool IsDestroyed() const { return state == ContextState::Destroyed; }
+
+  void MarkInitialized(){ initialized = true; }
+  void MarkUnitialized(){ initialized = false; }
+  bool IsInitialized() const { return initialized; }
 };
 
 extern ContextStatus g_context_status;

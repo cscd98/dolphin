@@ -138,8 +138,11 @@ void Destroy()
 {
   stateman.reset();
 
-  context->ClearState();
-  context->Flush();
+  if (context)
+  {
+    context->ClearState();
+    context->Flush();
+  }
 
   context.Reset();
   device1.Reset();

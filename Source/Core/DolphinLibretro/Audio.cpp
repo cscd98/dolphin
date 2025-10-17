@@ -3,6 +3,7 @@
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
 #include "AudioCommon/AudioCommon.h"
+#include "DolphinLibretro/Common/Globals.h"
 
 namespace Libretro
 {
@@ -13,9 +14,12 @@ retro_audio_sample_batch_t batch_cb = nullptr;
 static std::atomic<bool> g_buf_support{false};
 static std::atomic<unsigned> g_buf_occupancy{0};
 static std::atomic<bool> g_buf_underrun{false};
-std::atomic<retro_usec_t> frame_time_usec{16667};
+std::atomic<retro_usec_t> target_frame_duration_usec{16667};
+std::atomic<retro_usec_t> measured_frame_duration_usec{16667};
 bool call_back_audio{false};
+bool g_audio_state_cb{false};
 retro_frame_time_callback ftcb = {};
+static auto last_audio_push = std::chrono::steady_clock::now();
 
 unsigned int GetSampleRate()
 {
@@ -33,8 +37,15 @@ unsigned int GetSampleRate()
   return 48043;
 }
 
+void Reset()
+{
+  g_audio_state_cb = false;
+}
+
 void Init()
 {
+  Reset();
+
   call_back_audio = Options::callBackAudio.Get();
 
   if (!call_back_audio)
@@ -53,16 +64,29 @@ void Init()
 
   // Register frame time callback
   float refresh_rate = 60.0f;
-  Libretro::environ_cb(RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE, &refresh_rate);
+  if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE, &refresh_rate))
+  {
+    call_back_audio = false;
+    DEBUG_LOG_FMT(VIDEO, "Async audio unable to determine target refresh rate");
+    return;
+  }
 
   if (refresh_rate < 1.0f)
     refresh_rate = 60.0f;
 
   ftcb.callback = [](retro_usec_t usec) {
-    frame_time_usec.store(usec, std::memory_order_relaxed);
+    measured_frame_duration_usec.store(usec, std::memory_order_relaxed);
   };
   ftcb.reference = static_cast<retro_usec_t>(1000000.0f / refresh_rate);
-  Libretro::environ_cb(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &ftcb);
+
+  target_frame_duration_usec.store(ftcb.reference, std::memory_order_relaxed);
+
+  if (!Libretro::environ_cb(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &ftcb))
+  {
+    call_back_audio = false;
+    DEBUG_LOG_FMT(VIDEO, "Async audio unable to set frame time callback");
+    return;
+  }
 
   // buffer status callback
   retro_audio_buffer_status_callback bs{};
@@ -71,7 +95,7 @@ void Init()
   if (Libretro::environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK, &bs))
   {
     g_buf_support.store(true, std::memory_order_relaxed);
-    DEBUG_LOG_FMT(VIDEO, "Registered RA audio buffer status callback");
+    DEBUG_LOG_FMT(VIDEO, "Registered async audio buffer status callback");
   }
   else
   {
@@ -93,7 +117,7 @@ void Start()
 
 inline unsigned GetSamplesForFrame(unsigned sample_rate)
 {
-  double frame_time_sec = frame_time_usec.load(std::memory_order_relaxed) * 1e-6;
+  double frame_time_sec = target_frame_duration_usec.load(std::memory_order_relaxed) * 1e-6;
   return std::clamp(static_cast<unsigned>(frame_time_sec * sample_rate),
                     MIN_SAMPLES, MAX_SAMPLES);
 }
@@ -157,14 +181,14 @@ void Stream::Update(unsigned int num_samples)
   MixAndPush(num_samples);
 }
 
-void Stream::ProcessAudioSetState(bool enable)
+void Stream::ProcessCallBack()
 {
-  m_callback_received = enable;
-}
+  if (!m_mixer || !batch_cb || !Libretro::g_emuthread_launched)
+    return;
 
-void Stream::ProcessAudioCallback()
-{
-  if (!m_mixer || !batch_cb)
+  // True: Audio driver in frontend is active
+  // False: Audio driver in frontend is paused or inactive
+  if (!Libretro::Audio::g_audio_state_cb)
     return;
 
   auto& system = Core::System::GetInstance();
@@ -200,20 +224,14 @@ void Stream::ProcessAudioCallback()
 // Call backs
 void retroarch_audio_state_cb(bool enable)
 {
-  auto& sys = Core::System::GetInstance();
-  if (auto* s = static_cast<Libretro::Audio::Stream*>(sys.GetSoundStream()))
-  {
-    s->ProcessAudioSetState(enable);
-  }
+  Libretro::Audio::g_audio_state_cb = enable;
 }
 
+// Notifies libretro that audio data should be written
 void retroarch_audio_cb()
 {
-  auto& sys = Core::System::GetInstance();
-  if (auto* s = static_cast<Libretro::Audio::Stream*>(sys.GetSoundStream()))
-  {
-    s->ProcessAudioCallback();
-  }
+  if (auto* s = Core::System::GetInstance().GetSoundStream())
+    s->ProcessCallBack();
 }
 
 void retroarch_audio_buffer_status_cb(bool active,

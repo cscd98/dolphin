@@ -116,44 +116,48 @@ extern Option<PowerPC::CPUCore> cpu_core;
 extern Option<float> cpuClockRate;
 extern Option<float> EmulationSpeed;
 extern Option<bool> fastmem;
+extern Option<bool> DSPHLE;
 extern Option<bool> cheatsEnabled;
 extern Option<DiscIO::Language> Language;
 extern Option<bool> fastDiscSpeed;
-
-// DSP / Audio
-extern Option<bool> DSPHLE;
-extern Option<bool> DSPEnableJIT;
+extern Option<bool> WiimoteContinuousScanning;
+extern Option<bool> altGCPorts;
 extern Option<unsigned int> audioMixerRate;
 
-// Interface / General
+// Main.Interface
 extern Option<bool> osdEnabled;
-extern Option<Common::Log::LogLevel> logLevel;
 
-// SYSCONF
+// Main.DSP
+extern Option<bool> DSPEnableJIT;
+
+// SYSCONF.IPL
 extern Option<bool> Widescreen;
 extern Option<bool> progressiveScan;
 extern Option<bool> pal60;
+
+// SYSCONF.BT
 extern Option<u32> sensorBarPosition;
 extern Option<bool> enableRumble;
-extern Option<bool> WiimoteContinuousScanning;
-extern Option<bool> altGCPorts;
+
+// Graphics.Hardware
+extern Option<bool> vSync;
 
 // Graphics.Settings
-extern Option<bool> WidescreenHack;
 extern Option<std::string> renderer;
+extern Option<bool> WidescreenHack;
 extern Option<int> efbScale;
 extern Option<ShaderCompilationMode> shaderCompilationMode;
 extern Option<bool> waitForShaders;
 extern Option<int> antiAliasing;
-extern Option<AnisotropicFilteringMode> maxAnisotropy;
-extern Option<TextureFilteringMode> forceTextureFilteringMode;
 extern Option<int> textureCacheAccuracy;
+extern Option<bool> loadCustomTextures;
+extern Option<bool> cacheCustomTextures;
 extern Option<bool> gpuTextureDecoding;
 extern Option<bool> fastDepthCalc;
 
 // Graphics.Enhancements
-extern Option<bool> loadCustomTextures;
-extern Option<bool> cacheCustomTextures;
+extern Option<TextureFilteringMode> forceTextureFilteringMode;
+extern Option<AnisotropicFilteringMode> maxAnisotropy;
 
 // Graphics.Hacks
 extern Option<bool> efbAccessEnable;
@@ -172,9 +176,11 @@ extern Option<bool> efbScaledCopy;
 extern Option<bool> efbEmulateFormatChanges;
 extern Option<bool> vertexRounding;
 extern Option<bool> viSkip;
-extern Option<u32> missingColorValue;
+//extern Option<u32> missingColorValue;
 extern Option<bool> fastTextureSampling;
+#ifdef __APPLE__
 extern Option<bool> noMipmapping;
+#endif
 
 // Wiimote IR
 extern Option<int> irMode;
@@ -183,6 +189,7 @@ extern Option<int> irWidth;
 extern Option<int> irHeight;
 
 // Other
+extern Option<Common::Log::LogLevel> logLevel;
 extern Option<bool> callBackAudio;
 
 template <typename T>

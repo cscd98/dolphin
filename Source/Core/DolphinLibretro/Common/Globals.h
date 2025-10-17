@@ -3,6 +3,7 @@
 namespace Libretro
 {
 extern retro_environment_t environ_cb;
+extern bool g_emuthread_launched;
 
 namespace Video
 {

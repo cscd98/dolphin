@@ -171,12 +171,6 @@ Option<int>::Option(const char* id, const char* name, int initial)
     Register();
 }
 
-Option<std::string> renderer("dolphin_renderer", "Renderer", {"Hardware"
-#if defined(_DEBUG) || defined(DEBUGFAST)
-    , "Software", "Null"
-#endif
-});
-
 // Main.Core
 Option<PowerPC::CPUCore> cpu_core("dolphin_cpu_core", "CPU Core", BuildCPUCoreList());
 Option<float> cpuClockRate("dolphin_cpu_clock_rate", "CPU Clock Rate",
@@ -184,7 +178,7 @@ Option<float> cpuClockRate("dolphin_cpu_clock_rate", "CPU Clock Rate",
                             {"5%", 0.05f}, {"10%", 0.1f}, {"20%", 0.2f}, {"30%", 0.3f}, {"40%", 0.4f},
                             {"50%", 0.5f}, {"60%", 0.6f}, {"70%", 0.7f}, {"80%", 0.8f}, {"90%", 0.9f}});
 Option<float> EmulationSpeed("dolphin_emulation_speed", "Emulation Speed",
-                             {{"unlimited", 0.0f}, {"100%", 1.0f}});
+                             {{"100%", 1.0f}, {"unlimited", 0.0f}});
 Option<bool> fastmem("dolphin_fastmem", "Fastmem", true);
 Option<bool> DSPHLE("dolphin_dsp_hle", "DSP HLE", true);
 Option<bool> cheatsEnabled("dolphin_cheats_enabled", "Internal Cheats Enabled", false);
@@ -208,9 +202,6 @@ Option<unsigned int> audioMixerRate("dolphin_mixer_rate", "Audio Mixer Rate",
 // Main.Interface
 Option<bool> osdEnabled("dolphin_osd_enabled", "OSD Enabled", true);
 
-// Main.General
-Option<bool> mainTimeTracking("dolphin_time_tracking", "Time Tracking", false);
-
 // Main.DSP
 Option<bool> DSPEnableJIT("dolphin_dsp_jit", "DSP Enable JIT", true);
 
@@ -223,7 +214,17 @@ Option<bool> pal60("dolphin_pal60", "PAL60", true);
 Option<u32> sensorBarPosition("dolphin_sensor_bar_position", "Sensor Bar Position", {"Bottom", "Top"});
 Option<bool> enableRumble("dolphin_enable_rumble", "Rumble", true);
 
+// Graphics.Hardware
+Option<bool> vSync("dolphin_vysnc", "VSync", false);
+
 // Graphics.Settings
+Option<std::string> renderer("dolphin_renderer", "Renderer",
+{
+  "Hardware"
+#if defined(_DEBUG) || defined(DEBUGFAST)
+  , "Software", "Null"
+#endif
+});
 Option<bool> WidescreenHack("dolphin_widescreen_hack", "WideScreen Hack", false);
 Option<int> efbScale("dolphin_efb_scale", "Internal Resolution", 1,
                      {"x1 (640 x 528)", "x2 (1280 x 1056)", "x3 (1920 x 1584)",

@@ -62,7 +62,6 @@ namespace Libretro
 {
 extern retro_environment_t environ_cb;
 static bool widescreen;
-static bool g_emuthread_launched = false;
 }  // namespace Libretro
 
 extern "C" {
@@ -225,6 +224,28 @@ void retro_run(void)
   }
 #endif
   RETRO_PERFORMANCE_STOP(dolphin_main_func);
+
+  // we need to throttle due to retro_run running at maximum possible speed
+  // this code should no longer be required now that Core::SetIsThrottlerTempDisabled isn't
+  // hard coded to true in Boot
+  /*if (Libretro::Audio::call_back_audio)
+  {
+    static auto last_frame_time = std::chrono::steady_clock::now();
+
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(now - last_frame_time).count();
+
+    retro_usec_t target_us = Libretro::Audio::target_frame_duration_usec.load(std::memory_order_relaxed);
+
+    if (elapsed_us < target_us)
+    {
+      // Sleep for the remaining time
+      auto sleep_us = target_us - elapsed_us;
+      Common::SleepCurrentThread(sleep_us / 1000);
+    }
+
+    last_frame_time = std::chrono::steady_clock::now();
+  }*/
 }
 
 size_t retro_serialize_size(void)

@@ -107,10 +107,6 @@ bool retro_load_game(const struct retro_game_info* game)
   INFO_LOG_FMT(COMMON, "User Directory set to '{}'", user_dir);
   INFO_LOG_FMT(COMMON, "System Directory set to '{}'", sys_dir);
 
-  /* disable throttling emulation to match GetTargetRefreshRate() */
-  Core::SetIsThrottlerTempDisabled(true);
-  SConfig::GetInstance().bBootToPause = true;
-
   // Main.Core
   Config::SetCurrent(Config::MAIN_CPU_CORE, Libretro::Options::cpu_core);
   // Disabled due to current upstream bug causing fastmem disabled to segfault
@@ -167,6 +163,9 @@ bool retro_load_game(const struct retro_game_info* game)
   // SYSCONF.BT
   Config::SetBase(Config::SYSCONF_SENSOR_BAR_POSITION, Libretro::Options::sensorBarPosition);
   Config::SetBase(Config::SYSCONF_WIIMOTE_MOTOR, Libretro::Options::enableRumble);
+
+  // Graphics.Hardware
+  Config::SetBase(Config::GFX_VSYNC, Libretro::Options::vSync);
 
   // Graphics.Settings
   Config::SetBase(Config::GFX_WIDESCREEN_HACK, Libretro::Options::WidescreenHack);
@@ -244,9 +243,14 @@ bool retro_load_game(const struct retro_game_info* game)
       break;
   }
 
+  /* disable throttling emulation to match GetTargetRefreshRate() */
+  Core::SetIsThrottlerTempDisabled(true);
+  SConfig::GetInstance().bBootToPause = true;
+
   INFO_LOG_FMT(BOOT, "Fastmem enabled = {}", (Config::Get(Config::MAIN_FASTMEM)) ? "Yes" : "No");
   INFO_LOG_FMT(BOOT, "JIT debug enabled = {}", Config::IsDebuggingEnabled() ? "Yes" : "No");
 
+  Libretro::FrameTiming::Init();
   Libretro::Audio::Init();
   Libretro::Video::Init();
   WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);

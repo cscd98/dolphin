@@ -111,33 +111,27 @@ bool retro_load_game(const struct retro_game_info* game)
   Core::SetIsThrottlerTempDisabled(true);
   SConfig::GetInstance().bBootToPause = true;
 
-  Config::SetCurrent(Config::MAIN_EMULATION_SPEED, Libretro::Options::EmulationSpeed);
-
-  // Disabled due to current upstream bug causing fastmem disabled to segfault
-//#if defined(_DEBUG)
-//  Config::SetCurrent(Config::MAIN_FASTMEM, false);
-//#else
-  Config::SetCurrent(Config::MAIN_FASTMEM, Libretro::Options::fastmem);
-//#endif
+  // Main.Core
   Config::SetCurrent(Config::MAIN_CPU_CORE, Libretro::Options::cpu_core);
+  // Disabled due to current upstream bug causing fastmem disabled to segfault
+  //#if defined(_DEBUG)
+  //  Config::SetCurrent(Config::MAIN_FASTMEM, false);
+  //#else
+  Config::SetCurrent(Config::MAIN_FASTMEM, Libretro::Options::fastmem);
+  //#endif
   Config::SetCurrent(Config::MAIN_DSP_HLE, Libretro::Options::DSPHLE);
-  Config::SetCurrent(Config::MAIN_DSP_JIT, Libretro::Options::DSPEnableJIT);
-  Config::SetCurrent(Config::MAIN_GC_LANGUAGE, (int)(DiscIO::Language)Libretro::Options::Language - 1);
   Config::SetCurrent(Config::MAIN_CPU_THREAD, true);
-  Config::SetCurrent(Config::MAIN_OVERCLOCK, Libretro::Options::cpuClockRate);
-  Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, Libretro::Options::cpuClockRate != 1.0);
-  Config::SetCurrent(Config::MAIN_AUDIO_BACKEND, BACKEND_NULLSOUND);
-  Config::SetCurrent(Config::MAIN_DUMP_AUDIO, false);
+  Config::SetCurrent(Config::MAIN_ENABLE_CHEATS, Libretro::Options::cheatsEnabled);
+  Config::SetCurrent(Config::MAIN_GC_LANGUAGE, (int)(DiscIO::Language)Libretro::Options::Language - 1);
   Config::SetCurrent(Config::MAIN_DPL2_DECODER, false);
   Config::SetCurrent(Config::MAIN_AUDIO_LATENCY, 0);
   Config::SetCurrent(Config::MAIN_AUDIO_FILL_GAPS, false);
+  Config::SetCurrent(Config::MAIN_EMULATION_SPEED, Libretro::Options::EmulationSpeed);
+  Config::SetCurrent(Config::MAIN_OVERCLOCK, Libretro::Options::cpuClockRate);
+  Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, Libretro::Options::cpuClockRate != 1.0);
   Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
-                   static_cast<bool>(Libretro::Options::WiimoteContinuousScanning.Get()));
-  Config::SetCurrent(Config::MAIN_ENABLE_CHEATS, Libretro::Options::cheatsEnabled);
-  Config::SetCurrent(Config::MAIN_OSD_MESSAGES, Libretro::Options::osdEnabled);
+                     static_cast<bool>(Libretro::Options::WiimoteContinuousScanning));
   Config::SetCurrent(Config::MAIN_FAST_DISC_SPEED, Libretro::Options::fastDiscSpeed);
-  Config::SetCurrent(Config::MAIN_TIME_TRACKING, false);
-
 #ifdef IPHONEOS
   //Libretro::Options::cpu_core.FilterForJitCapability();
   bool can_jit = false;
@@ -153,39 +147,70 @@ bool retro_load_game(const struct retro_game_info* game)
     Config::SetCurrent(Config::GFX_VERTEX_LOADER_TYPE, VertexLoaderType::Software);
   }
 #endif
+  // Main.Interface
+  Config::SetCurrent(Config::MAIN_OSD_MESSAGES, Libretro::Options::osdEnabled);
 
+  // Main.General
+  Config::SetCurrent(Config::MAIN_TIME_TRACKING, false);
+
+  // Main.DSP
+  Config::SetCurrent(Config::MAIN_DSP_JIT, Libretro::Options::DSPEnableJIT);
+  Config::SetCurrent(Config::MAIN_DUMP_AUDIO, false);
+  Config::SetCurrent(Config::MAIN_AUDIO_BACKEND, BACKEND_NULLSOUND);
+
+  // SYSCONF.IPL
   Config::SetBase(Config::SYSCONF_LANGUAGE, (u32)(DiscIO::Language)Libretro::Options::Language);
   Config::SetBase(Config::SYSCONF_WIDESCREEN, Libretro::Options::Widescreen);
   Config::SetBase(Config::SYSCONF_PROGRESSIVE_SCAN, Libretro::Options::progressiveScan);
   Config::SetBase(Config::SYSCONF_PAL60, Libretro::Options::pal60);
+
+  // SYSCONF.BT
   Config::SetBase(Config::SYSCONF_SENSOR_BAR_POSITION, Libretro::Options::sensorBarPosition);
   Config::SetBase(Config::SYSCONF_WIIMOTE_MOTOR, Libretro::Options::enableRumble);
 
+  // Graphics.Settings
   Config::SetBase(Config::GFX_WIDESCREEN_HACK, Libretro::Options::WidescreenHack);
-  Config::SetBase(Config::GFX_EFB_SCALE, Libretro::Options::efbScale);
   Config::SetBase(Config::GFX_ASPECT_RATIO, AspectMode::Stretch);
-  Config::SetBase(Config::GFX_BACKEND_MULTITHREADING, false);
-  Config::SetBase(Config::GFX_SHADER_COMPILATION_MODE, Libretro::Options::shaderCompilationMode);
-  Config::SetBase(Config::GFX_ENHANCE_MAX_ANISOTROPY, Libretro::Options::maxAnisotropy);
-  Config::SetBase(Config::GFX_HACK_IMMEDIATE_XFB, Libretro::Options::immediatexfb);
-  Config::SetBase(Config::GFX_HACK_SKIP_DUPLICATE_XFBS, Libretro::Options::skipDupeFrames);
-  //Config::SetBase(Config::GFX_HACK_EARLY_XFB_OUTPUT, false);
-  Config::SetBase(Config::GFX_HACK_COPY_EFB_SCALED, Libretro::Options::efbScaledCopy);
-  Config::SetBase(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, Libretro::Options::efbToTexture);
-  Config::SetBase(Config::GFX_HACK_DISABLE_COPY_TO_VRAM, Libretro::Options::efbToVram);
-  Config::SetBase(Config::GFX_FAST_DEPTH_CALC, Libretro::Options::fastDepthCalc);
-  Config::SetBase(Config::GFX_HACK_BBOX_ENABLE, Libretro::Options::bboxEnabled);
-  Config::SetBase(Config::GFX_ENABLE_GPU_TEXTURE_DECODING, Libretro::Options::gpuTextureDecoding);
-  Config::SetBase(Config::GFX_WAIT_FOR_SHADERS_BEFORE_STARTING, Libretro::Options::waitForShaders);
-  Config::SetBase(Config::GFX_ENHANCE_FORCE_TEXTURE_FILTERING, Libretro::Options::forceTextureFilteringMode);
+  Config::SetBase(Config::GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES, Libretro::Options::textureCacheAccuracy);
   Config::SetBase(Config::GFX_HIRES_TEXTURES, Libretro::Options::loadCustomTextures);
   Config::SetBase(Config::GFX_CACHE_HIRES_TEXTURES, Libretro::Options::cacheCustomTextures);
-  Config::SetBase(Config::GFX_SAFE_TEXTURE_CACHE_COLOR_SAMPLES, Libretro::Options::textureCacheAccuracy);
-  Config::SetBase(Config::GFX_HACK_DEFER_EFB_COPIES, Libretro::Options::deferEfbCopies);
+  Config::SetBase(Config::GFX_ENABLE_GPU_TEXTURE_DECODING, Libretro::Options::gpuTextureDecoding);
+  Config::SetBase(Config::GFX_FAST_DEPTH_CALC, Libretro::Options::fastDepthCalc);
+  Config::SetBase(Config::GFX_EFB_SCALE, Libretro::Options::efbScale);
+  Config::SetBase(Config::GFX_BACKEND_MULTITHREADING, false);
+  Config::SetBase(Config::GFX_SHADER_COMPILATION_MODE, Libretro::Options::shaderCompilationMode);
+  Config::SetBase(Config::GFX_WAIT_FOR_SHADERS_BEFORE_STARTING, Libretro::Options::waitForShaders);
 #if 0
   Config::SetBase(Config::GFX_SHADER_COMPILER_THREADS, 1);
   Config::SetBase(Config::GFX_SHADER_PRECOMPILER_THREADS, 1);
 #endif
+
+  // Graphics.Enhancements
+  Config::SetBase(Config::GFX_ENHANCE_FORCE_TEXTURE_FILTERING, Libretro::Options::forceTextureFilteringMode);
+  Config::SetBase(Config::GFX_ENHANCE_MAX_ANISOTROPY, Libretro::Options::maxAnisotropy);
+
+  // Graphics.Hacks
+  Config::SetBase(Config::GFX_HACK_EFB_ACCESS_ENABLE, Libretro::Options::efbAccessEnable);
+  Config::SetBase(Config::GFX_HACK_EFB_DEFER_INVALIDATION, Libretro::Options::efbAccessDeferInvalidation);
+  Config::SetBase(Config::GFX_HACK_EFB_ACCESS_TILE_SIZE, Libretro::Options::efbAccessTileSize);
+  Config::SetBase(Config::GFX_HACK_BBOX_ENABLE, Libretro::Options::bboxEnabled);
+  Config::SetBase(Config::GFX_HACK_FORCE_PROGRESSIVE, Libretro::Options::forceProgressive);
+  Config::SetBase(Config::GFX_HACK_SKIP_EFB_COPY_TO_RAM, Libretro::Options::efbToTexture);
+  Config::SetBase(Config::GFX_HACK_SKIP_XFB_COPY_TO_RAM, Libretro::Options::xfbToTextureEnable);
+  Config::SetBase(Config::GFX_HACK_DISABLE_COPY_TO_VRAM, Libretro::Options::efbToVram);
+  Config::SetBase(Config::GFX_HACK_DEFER_EFB_COPIES, Libretro::Options::deferEfbCopies);
+  Config::SetBase(Config::GFX_HACK_IMMEDIATE_XFB, Libretro::Options::immediatexfb);
+  Config::SetBase(Config::GFX_HACK_SKIP_DUPLICATE_XFBS, Libretro::Options::skipDupeFrames);
+  Config::SetBase(Config::GFX_HACK_EARLY_XFB_OUTPUT, Libretro::Options::earlyXFBOutput);
+  Config::SetBase(Config::GFX_HACK_COPY_EFB_SCALED, Libretro::Options::efbScaledCopy);
+  Config::SetBase(Config::GFX_HACK_EFB_EMULATE_FORMAT_CHANGES, Libretro::Options::efbEmulateFormatChanges);
+  Config::SetBase(Config::GFX_HACK_VERTEX_ROUNDING, Libretro::Options::vertexRounding);
+  Config::SetBase(Config::GFX_HACK_VI_SKIP, Libretro::Options::viSkip);
+  //Config::SetBase(Config::GFX_HACK_MISSING_COLOR_VALUE, Libretro::Options::missingColorValue);
+  Config::SetBase(Config::GFX_HACK_FAST_TEXTURE_SAMPLING, Libretro::Options::fastTextureSampling);
+  #ifdef __APPLE__
+    Config::SetBase(Config::GFX_HACK_NO_MIPMAPPING, Libretro::Options::noMipmapping);
+  #endif
 
   switch (Libretro::Options::antiAliasing)
   {

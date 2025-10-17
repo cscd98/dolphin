@@ -31,6 +31,7 @@ public:
   Option(const char* id, const char* name, bool initial);
   Option(const char* id, const char* name,
     const std::vector<std::pair<std::string, T>>& list);
+  Option(const char* id, const char* name, int initial);
 
   bool Updated()
   {
@@ -110,49 +111,78 @@ private:
   std::vector<std::pair<std::string, T>> m_list;
 };
 
-extern Option<std::string> renderer;
-extern Option<int> efbScale;
-extern Option<bool> Widescreen;
-extern Option<bool> WidescreenHack;
-extern Option<ShaderCompilationMode> shaderCompilationMode;
-extern Option<bool> waitForShaders;
-extern Option<bool> progressiveScan;
-extern Option<bool> pal60;
-extern Option<int> antiAliasing;
-extern Option<AnisotropicFilteringMode> maxAnisotropy;
-extern Option<bool> skipDupeFrames;
-extern Option<bool> immediatexfb;
-extern Option<bool> efbScaledCopy;
-extern Option<TextureFilteringMode> forceTextureFilteringMode;
-extern Option<bool> efbToTexture;
-extern Option<bool> deferEfbCopies;
-extern Option<int> textureCacheAccuracy;
-extern Option<bool> gpuTextureDecoding;
-extern Option<bool> fastDepthCalc;
-extern Option<bool> bboxEnabled;
-extern Option<bool> efbToVram;
-extern Option<bool> loadCustomTextures;
-extern Option<bool> cacheCustomTextures;
+// Core
 extern Option<PowerPC::CPUCore> cpu_core;
 extern Option<float> cpuClockRate;
 extern Option<float> EmulationSpeed;
 extern Option<bool> fastmem;
+extern Option<bool> cheatsEnabled;
+extern Option<DiscIO::Language> Language;
 extern Option<bool> fastDiscSpeed;
+
+// DSP / Audio
+extern Option<bool> DSPHLE;
+extern Option<bool> DSPEnableJIT;
+extern Option<unsigned int> audioMixerRate;
+
+// Interface / General
+extern Option<bool> osdEnabled;
+extern Option<Common::Log::LogLevel> logLevel;
+
+// SYSCONF
+extern Option<bool> Widescreen;
+extern Option<bool> progressiveScan;
+extern Option<bool> pal60;
+extern Option<u32> sensorBarPosition;
+extern Option<bool> enableRumble;
+extern Option<bool> WiimoteContinuousScanning;
+extern Option<bool> altGCPorts;
+
+// Graphics.Settings
+extern Option<bool> WidescreenHack;
+extern Option<std::string> renderer;
+extern Option<int> efbScale;
+extern Option<ShaderCompilationMode> shaderCompilationMode;
+extern Option<bool> waitForShaders;
+extern Option<int> antiAliasing;
+extern Option<AnisotropicFilteringMode> maxAnisotropy;
+extern Option<TextureFilteringMode> forceTextureFilteringMode;
+extern Option<int> textureCacheAccuracy;
+extern Option<bool> gpuTextureDecoding;
+extern Option<bool> fastDepthCalc;
+
+// Graphics.Enhancements
+extern Option<bool> loadCustomTextures;
+extern Option<bool> cacheCustomTextures;
+
+// Graphics.Hacks
+extern Option<bool> efbAccessEnable;
+extern Option<bool> efbAccessDeferInvalidation;
+extern Option<int> efbAccessTileSize;
+extern Option<bool> bboxEnabled;
+extern Option<bool> forceProgressive;
+extern Option<bool> efbToTexture;
+extern Option<bool> xfbToTextureEnable;
+extern Option<bool> efbToVram;
+extern Option<bool> deferEfbCopies;
+extern Option<bool> immediatexfb;
+extern Option<bool> skipDupeFrames;
+extern Option<bool> earlyXFBOutput;
+extern Option<bool> efbScaledCopy;
+extern Option<bool> efbEmulateFormatChanges;
+extern Option<bool> vertexRounding;
+extern Option<bool> viSkip;
+extern Option<u32> missingColorValue;
+extern Option<bool> fastTextureSampling;
+extern Option<bool> noMipmapping;
+
+// Wiimote IR
 extern Option<int> irMode;
 extern Option<int> irCenter;
 extern Option<int> irWidth;
 extern Option<int> irHeight;
-extern Option<bool> enableRumble;
-extern Option<u32> sensorBarPosition;
-extern Option<bool> WiimoteContinuousScanning;
-extern Option<bool> altGCPorts;
-extern Option<unsigned int> audioMixerRate;
-extern Option<bool> DSPHLE;
-extern Option<bool> DSPEnableJIT;
-extern Option<DiscIO::Language> Language;
-extern Option<bool> cheatsEnabled;
-extern Option<bool> osdEnabled;
-extern Option<Common::Log::LogLevel> logLevel;
+
+// Other
 extern Option<bool> callBackAudio;
 
 template <typename T>

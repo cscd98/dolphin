@@ -11,12 +11,10 @@ namespace Libretro
 namespace Audio
 {
 extern retro_audio_sample_batch_t batch_cb;
-extern bool call_back_audio;
-extern std::atomic<retro_usec_t> frame_time_usec;
-extern retro_frame_time_callback ftcb;
 static constexpr unsigned int MIN_SAMPLES = 96;
 static constexpr unsigned int MAX_SAMPLES = 512;
 
+void Reset();
 void Init();
 void Start();
 unsigned int GetSampleRate();
@@ -33,8 +31,7 @@ public:
   void MixAndPush(unsigned int num_samples);
   void Update(unsigned int num_samples) override;
 
-  void ProcessAudioCallback();
-  void ProcessAudioSetState(bool enable);
+  void ProcessCallBack() override;
 
 private:
   s16 m_buffer[MAX_SAMPLES * 2];
@@ -43,6 +40,19 @@ private:
 };
 
 }  // namespace Audio
+
+namespace FrameTiming
+{
+  extern std::atomic<retro_usec_t> target_frame_duration_usec;
+  extern std::atomic<retro_usec_t> measured_frame_duration_usec;
+  extern bool use_frame_time_cb;
+
+  void Init();
+  void Reset();
+  bool IsEnabled();
+  void ThrottleFrame(); // Call this at end of retro_run()
+} // namespace FrameTiming
+
 }  // namespace Libretro
 
 void retroarch_audio_cb();

@@ -62,7 +62,6 @@ namespace Libretro
 {
 extern retro_environment_t environ_cb;
 static bool widescreen;
-static bool g_emuthread_launched = false;
 }  // namespace Libretro
 
 extern "C" {

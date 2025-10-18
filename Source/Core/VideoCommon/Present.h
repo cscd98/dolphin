@@ -24,7 +24,10 @@ namespace VideoCommon
 {
 class OnScreenUI;
 class PostProcessing;
-
+#ifdef __LIBRETRO__
+extern bool g_is_fast_forwarding;
+extern bool g_is_duplicate_frame;
+#endif
 // Presenter is a class that deals with putting the final XFB on the screen.
 // It also handles the ImGui UI and post-processing.
 class Presenter

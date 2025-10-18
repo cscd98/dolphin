@@ -50,7 +50,9 @@ namespace FrameTiming
   void Init();
   void Reset();
   bool IsEnabled();
-  void ThrottleFrame(); // Call this at end of retro_run()
+  void CheckForFastForwarding();
+  bool IsFastForwarding();
+  void ThrottleFrame();
 } // namespace FrameTiming
 
 }  // namespace Libretro

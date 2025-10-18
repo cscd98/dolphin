@@ -69,7 +69,6 @@ extern "C" {
 void retro_set_environment(retro_environment_t cb)
 {
   Libretro::environ_cb = cb;
-  Libretro::Options::SetVariables();
 #ifdef PERF_TEST
   environ_cb(RETRO_ENVIRONMENT_GET_PERF_INTERFACE, &perf_cb);
 #endif
@@ -100,8 +99,11 @@ void retro_get_system_info(retro_system_info* info)
 
 void retro_get_system_av_info(retro_system_av_info* info)
 {
-  info->geometry.base_width  = EFB_WIDTH * Libretro::Options::efbScale;
-  info->geometry.base_height = EFB_HEIGHT * Libretro::Options::efbScale;
+  int efbScale = Libretro::Options::GetCached<int>(
+    Libretro::Options::gfx_settings::EFB_SCALE);
+
+  info->geometry.base_width  = EFB_WIDTH * efbScale;
+  info->geometry.base_height = EFB_HEIGHT * efbScale;
 
   info->geometry.max_width   = info->geometry.base_width;
   info->geometry.max_height  = info->geometry.base_height;
@@ -123,15 +125,22 @@ void retro_reset(void)
 
 void retro_run(void)
 {
-  Libretro::Options::CheckVariables();
+  Libretro::Options::CheckForUpdatedVariables();
+  Libretro::FrameTiming::CheckForFastForwarding();
 #if defined(_DEBUG)
   Common::Log::LogManager::GetInstance()->SetLogLevel(Common::Log::LogLevel::LDEBUG);
 #else
-  Common::Log::LogManager::GetInstance()->SetLogLevel(Libretro::Options::logLevel);
+  Common::Log::LogManager::GetInstance()->SetLogLevel(
+    static_cast<Common::Log::LogLevel>(
+        Libretro::Options::GetCached<int>(
+            Libretro::Options::main_interface::LOG_LEVEL, static_cast<int>(Common::Log::LogLevel::LINFO))));
 #endif
-  Config::SetCurrent(Config::MAIN_OVERCLOCK, Libretro::Options::cpuClockRate);
-  Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, Libretro::Options::cpuClockRate != 1.0);
-  g_Config.bWidescreenHack = Libretro::Options::WidescreenHack;
+  double cpuClock = Libretro::Options::GetCached<double>(
+    Libretro::Options::core::CPU_CLOCK_RATE);
+  Config::SetCurrent(Config::MAIN_OVERCLOCK, cpuClock);
+  Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, cpuClock != 1.0);
+  g_Config.bWidescreenHack = Libretro::Options::GetCached<bool>(
+    Libretro::Options::gfx_settings::WIDESCREEN_HACK);
 
   Libretro::Input::Update();
 
@@ -171,14 +180,14 @@ void retro_run(void)
         ->SetSystemFrameBuffer((GLuint)Libretro::Video::hw_render.get_current_framebuffer());
   }
 
-  if (Libretro::Options::efbScale.Updated())
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::EFB_SCALE))
   {
-    g_Config.iEFBScale = Libretro::Options::efbScale;
+    g_Config.iEFBScale = Libretro::Options::GetCached<int>(
+      Libretro::Options::gfx_settings::EFB_SCALE);
 
     unsigned cmd = RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO;
     if (Libretro::Video::hw_render.context_type == RETRO_HW_CONTEXT_D3D11)
       cmd = RETRO_ENVIRONMENT_SET_GEOMETRY;
-
     retro_system_av_info info;
     retro_get_system_av_info(&info);
     Libretro::environ_cb(cmd, &info);
@@ -192,16 +201,19 @@ void retro_run(void)
     Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
   }
 
-  if (Libretro::Options::irMode.Updated() || Libretro::Options::irCenter.Updated()
-      || Libretro::Options::irWidth.Updated() || Libretro::Options::irHeight.Updated()
-      || Libretro::Options::enableRumble.Updated())
+  if (Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_MODE) ||
+      Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_OFFSET) ||
+      Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_YAW) ||
+      Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_PITCH) ||
+      Libretro::Options::IsUpdated(Libretro::Options::sysconf::ENABLE_RUMBLE))
   {
     Libretro::Input::ResetControllers();
   }
 
-  if (Libretro::Options::WiimoteContinuousScanning.Updated())
+  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
   {
-    Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING, Libretro::Options::WiimoteContinuousScanning.Get());
+    Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
+      Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING));
     WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
   }
 
@@ -212,17 +224,6 @@ void retro_run(void)
   Core::DoFrameStep(system);
   system.GetFifo().RunGpuLoop();
 
-  // ensures frame advance with OpenGL backend
-  // without this, frames may only advance with input!
-#ifdef __linux__
-  if (g_gfx && Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
-  {
-    u32 backbuffer_width = EFB_WIDTH * Libretro::Options::efbScale;
-    u32 backbuffer_height = EFB_HEIGHT * Libretro::Options::efbScale;
-
-    Libretro::Video::video_cb(RETRO_HW_FRAME_BUFFER_VALID, backbuffer_width, backbuffer_height, 0);
-  }
-#endif
   RETRO_PERFORMANCE_STOP(dolphin_main_func);
 }
 

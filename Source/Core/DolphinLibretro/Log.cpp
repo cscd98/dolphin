@@ -49,7 +49,10 @@ void Shutdown()
 
 LogListener::LogListener(retro_log_printf_t log) : m_log(log)
 {
-  Common::Log::LogManager::GetInstance()->SetLogLevel(Libretro::Options::logLevel);
+  Common::Log::LogManager::GetInstance()->SetLogLevel(
+    static_cast<Common::Log::LogLevel>(
+        Libretro::Options::GetCached<int>(
+            Libretro::Options::main_interface::LOG_LEVEL, static_cast<int>(Common::Log::LogLevel::LINFO))));
   Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::BOOT, true);
   Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::CORE, true);
   Common::Log::LogManager::GetInstance()->SetEnable(Common::Log::LogType::VIDEO, true);

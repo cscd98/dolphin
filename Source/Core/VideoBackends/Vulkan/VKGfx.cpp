@@ -222,6 +222,24 @@ bool VKGfx::BindBackbuffer(const ClearColor& clear_color)
 
   g_command_buffer_mgr->WaitForWorkerThreadIdle();
 
+#ifdef __LIBRETRO__
+  // During fast-forward, skip most frame presentations to reduce swap chain load
+  // this is a temp HACK until we can properly implement frame skipping
+  if (VideoCommon::g_is_fast_forwarding)
+  {
+    static int frame_skip_counter = 0;
+    frame_skip_counter++;
+
+    // Only present every x frame during fast-forward
+    if (frame_skip_counter < 12)
+    {
+      return false;
+    }
+
+    frame_skip_counter = 0;
+  }
+#endif
+
   // Handle host window resizes.
   CheckForSurfaceChange();
   CheckForSurfaceResize();
@@ -297,11 +315,17 @@ bool VKGfx::BindBackbuffer(const ClearColor& clear_color)
   // Transition from undefined (or present src, but it can be substituted) to
   // color attachment ready for writing. These transitions must occur outside
   // a render pass, unless the render pass declares a self-dependency.
-  m_swap_chain->GetCurrentTexture()->OverrideImageLayout(VK_IMAGE_LAYOUT_UNDEFINED);
-  m_swap_chain->GetCurrentTexture()->TransitionToLayout(
-      g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-  SetAndClearFramebuffer(m_swap_chain->GetCurrentFramebuffer(),
-                         ClearColor{{0.0f, 0.0f, 0.0f, 1.0f}});
+  if (auto* tex = m_swap_chain->GetCurrentTexture())
+  {
+    tex->OverrideImageLayout(VK_IMAGE_LAYOUT_UNDEFINED);
+    tex->TransitionToLayout(
+        g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  }
+  if(auto* chain = m_swap_chain->GetCurrentFramebuffer())
+  {
+    SetAndClearFramebuffer(chain,
+                           ClearColor{{0.0f, 0.0f, 0.0f, 1.0f}});
+  }
   return true;
 }
 
@@ -314,8 +338,11 @@ void VKGfx::PresentBackbuffer()
   {
     // Transition the backbuffer to PRESENT_SRC to ensure all commands drawing
     // to it have finished before present.
-    m_swap_chain->GetCurrentTexture()->TransitionToLayout(
+    if (auto* tex = m_swap_chain->GetCurrentTexture())
+    {
+      tex->TransitionToLayout(
         g_command_buffer_mgr->GetCurrentCommandBuffer(), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    }
 
     // Submit the current command buffer, signaling rendering finished semaphore when it's done
     // Because this final command buffer is rendering to the swap chain, we need to wait for

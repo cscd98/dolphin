@@ -22,6 +22,7 @@
 #endif
 
 #include "vulkan/vulkan.h"
+#undef Success
 
 #ifdef ANDROID
 #include <unistd.h>

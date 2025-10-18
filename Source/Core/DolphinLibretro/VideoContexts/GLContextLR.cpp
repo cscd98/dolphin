@@ -2,6 +2,7 @@
 #include "Common/Logging/Log.h"
 #include "Core/Config/MainSettings.h"
 #include "VideoCommon/VideoCommon.h"
+#include "VideoCommon/Present.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
 #include "DolphinLibretro/Video.h"
@@ -19,8 +20,8 @@ void* GLContextLR::GetFuncAddress(const std::string& name)
 
 bool GLContextLR::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core)
 {
-  m_backbuffer_width = EFB_WIDTH * Libretro::Options::efbScale;
-  m_backbuffer_height = EFB_HEIGHT * Libretro::Options::efbScale;
+  m_backbuffer_width = EFB_WIDTH * Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::EFB_SCALE, 1);
+  m_backbuffer_height = EFB_HEIGHT * Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::EFB_SCALE, 1);
 
   switch (Libretro::Video::hw_render.context_type)
   {
@@ -47,8 +48,8 @@ bool GLContextLR::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core
 
 void GLContextLR::Swap()
 {
-  Libretro::Video::video_cb(RETRO_HW_FRAME_BUFFER_VALID, m_backbuffer_width, m_backbuffer_height,
-                            0);
+  Libretro::Video::video_cb(VideoCommon::g_is_duplicate_frame ? nullptr : RETRO_HW_FRAME_BUFFER_VALID,
+        m_backbuffer_width, m_backbuffer_height, 0);
 }
 
 void GLContextLR::Shutdown()

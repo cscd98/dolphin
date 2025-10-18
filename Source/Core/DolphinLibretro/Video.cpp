@@ -67,7 +67,10 @@ void Init()
 {
   DEBUG_LOG_FMT(VIDEO, "Video - Init");
 
-  if (Options::renderer == "Hardware")
+  std::string renderer = Libretro::Options::GetCached<std::string>(
+    Libretro::Options::gfx_settings::RENDERER);
+
+  if (renderer == "Hardware")
   {
     retro_hw_context_type preferred = RETRO_HW_CONTEXT_NONE;
     if (environ_cb(RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER, &preferred) && SetHWRender(preferred))
@@ -88,7 +91,7 @@ void Init()
 #endif
   }
   hw_render.context_type = RETRO_HW_CONTEXT_NONE;
-  if (Options::renderer == "Software")
+  if (renderer == "Software")
     Config::SetBase(Config::MAIN_GFX_BACKEND, "Software Renderer");
   else
     Config::SetBase(Config::MAIN_GFX_BACKEND, "Null");
@@ -102,6 +105,7 @@ bool SetHWRender(retro_hw_context_type type)
   hw_render.context_reset = ContextReset;
   hw_render.context_destroy = ContextDestroy;
   hw_render.bottom_left_origin = true;
+  bool success = false;
 
   switch (type)
   {
@@ -112,29 +116,38 @@ bool SetHWRender(retro_hw_context_type type)
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {
       Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
-      return true;
+      success = true;
     } else {
       WARN_LOG_FMT(VIDEO, "Video - SetHWRender - failed to set hw renderer for OpenGL Core");
     }
     break;
   case RETRO_HW_CONTEXT_OPENGLES3:
   case RETRO_HW_CONTEXT_OPENGL:
+  {
     // when using RETRO_HW_CONTEXT_OPENGL you can't set version above 3.0 (RA will try to use highest version available anyway)
     // dolphin support OpenGL ES 3.0 too (no support for 2.0) so we are good
     hw_render.version_major = 3;
     hw_render.version_minor = 0;
+
+    const char* api_name = (type == RETRO_HW_CONTEXT_OPENGLES3)
+      ? "OpenGL ES 3.0+" : "OpenGL 3.0+";
+
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {
       // Shared context is required with "gl" video driver
-      if(!environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, nullptr)) {
-        WARN_LOG_FMT(VIDEO, "Video - SetHWRender - unable to set shared context for OpenGL/GLES");
+      if (!environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, nullptr)) {
+        WARN_LOG_FMT(VIDEO, "Video - SetHWRender - unable to set shared context for {}", api_name);
       }
+      INFO_LOG_FMT(VIDEO, "Video - SetHWRender - using {}", api_name);
       Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
-      return true;
-    } else {
-      WARN_LOG_FMT(VIDEO, "Video - SetHWRender - failed to set hw renderer for OpenGL/GLES");
+      success = true;
+    }
+    else
+    {
+      WARN_LOG_FMT(VIDEO, "Video - SetHWRender - failed to set hw renderer for {}", api_name);
     }
     break;
+  }
 #ifdef _WIN32
   case RETRO_HW_CONTEXT_D3D11:
     hw_render.version_major = 11;
@@ -142,7 +155,7 @@ bool SetHWRender(retro_hw_context_type type)
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {
       Config::SetBase(Config::MAIN_GFX_BACKEND, "D3D");
-      return true;
+      success = true;
     }
     break;
 #endif
@@ -166,14 +179,15 @@ bool SetHWRender(retro_hw_context_type type)
       environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE, (void*)&iface);
 
       Config::SetBase(Config::MAIN_GFX_BACKEND, "Vulkan");
-      return true;
+      success = true;
     }
     break;
 #endif
   default:
     break;
   }
-  return false;
+
+  return success;
 }
 
 void ContextReset(void)
@@ -199,8 +213,11 @@ void ContextReset(void)
       return;
     }
     Vk::SetHWRenderInterface(vulkan);
-    Vk::SetSurfaceSize(EFB_WIDTH * Libretro::Options::efbScale,
-                       EFB_HEIGHT * Libretro::Options::efbScale);
+
+    int efbScale = Libretro::Options::GetCached<int>(
+      Libretro::Options::gfx_settings::EFB_SCALE, 1);
+    Vk::SetSurfaceSize(EFB_WIDTH * efbScale,
+                       EFB_HEIGHT * efbScale);
   }
 #endif
 
@@ -208,7 +225,9 @@ void ContextReset(void)
   if (hw_render.context_type == RETRO_HW_CONTEXT_D3D11)
   {
     WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
-    wsi.render_surface_scale = Libretro::Options::efbScale;
+    int efbScale = Libretro::Options::GetCached<int>(
+      Libretro::Options::gfx_settings::EFB_SCALE, 1);
+    wsi.render_surface_scale = efbScale;
     g_video_backend->PrepareWindow(wsi);
 
     retro_hw_render_interface_d3d11* d3d;
@@ -255,7 +274,7 @@ void ContextReset(void)
     UpdateActiveConfig();
 
     std::unique_ptr<DX11SwapChain> swap_chain = std::make_unique<DX11SwapChain>(
-      wsi, EFB_WIDTH * Libretro::Options::efbScale, EFB_HEIGHT * Libretro::Options::efbScale,
+      wsi, EFB_WIDTH * efbScale, EFB_HEIGHT * efbScale,
       nullptr, nullptr);
 
     auto gfx = std::make_unique<DX11::Gfx>(std::move(swap_chain), wsi.render_surface_scale);

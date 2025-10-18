@@ -23,6 +23,7 @@
 #include "VideoCommon/VideoEvents.h"
 #include "VideoCommon/Widescreen.h"
 #ifdef __LIBRETRO__
+#include "Core/Config/MainSettings.h"
 #include "VideoCommon/VideoBackendBase.h"
 #endif
 
@@ -30,6 +31,10 @@ std::unique_ptr<VideoCommon::Presenter> g_presenter;
 
 namespace VideoCommon
 {
+#ifdef __LIBRETRO__
+bool g_is_fast_forwarding{false};
+bool g_is_duplicate_frame{false};
+#endif
 // Stretches the native/internal analog resolution aspect ratio from ~4:3 to ~16:9
 static float SourceAspectRatioToWidescreen(float source_aspect)
 {
@@ -197,6 +202,14 @@ void Presenter::ViSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
       }
     }
   }
+
+#ifdef __LIBRETRO__
+  g_is_duplicate_frame = is_duplicate;
+
+  // allow presentation logic to proceed to always generate a frame with OGL
+  if(Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
+    is_duplicate = false;
+#endif
 
   BeforePresentEvent::Trigger(present_info);
 
@@ -872,10 +885,17 @@ void Presenter::Present(std::optional<TimePoint> presentation_time)
   {
     std::lock_guard<std::mutex> guard(m_swap_mutex);
 
+#ifndef __LIBRETRO__
     if (presentation_time.has_value())
       Core::System::GetInstance().GetCoreTiming().SleepUntil(*presentation_time);
+#endif
 
+#ifdef __LIBRETRO__
+    if ((!g_is_fast_forwarding) || (g_is_fast_forwarding && backbuffer_bound))
+      g_gfx->PresentBackbuffer();
+#else
     g_gfx->PresentBackbuffer();
+#endif
   }
 
   if (m_xfb_entry)

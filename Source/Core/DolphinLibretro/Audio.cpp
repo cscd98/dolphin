@@ -21,13 +21,14 @@ unsigned int GetSampleRate()
 {
   // when called from retro_run
   SoundStream* sound_stream = Core::System::GetInstance().GetSoundStream();
+  double sampleRate = Libretro::Options::GetCached<int>(Libretro::Options::audio::MIXER_RATE);
   if (sound_stream && sound_stream->GetMixer() &&
       sound_stream->GetMixer()->GetSampleRate() != 0)
     return sound_stream->GetMixer()->GetSampleRate();
   // used in Stream constructor
   if (Core::System::GetInstance().IsWii())
-    return Options::audioMixerRate;
-  else if (Options::audioMixerRate == 32000u)
+    return sampleRate;
+  else if (sampleRate == 32000u)
     return 32029;
 
   return 48043;
@@ -42,7 +43,7 @@ void Init()
 {
   Reset();
 
-  call_back_audio = Options::callBackAudio.Get();
+  call_back_audio = Libretro::Options::GetCached<bool>(Libretro::Options::audio::CALL_BACK_AUDIO);
 
   if (!call_back_audio)
     return;

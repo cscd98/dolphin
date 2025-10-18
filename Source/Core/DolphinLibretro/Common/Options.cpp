@@ -1,6 +1,6 @@
 
 #include <libretro.h>
-
+#include <cstdlib>
 #include "DolphinLibretro/Common/Options.h"
 
 namespace Libretro
@@ -8,325 +8,1327 @@ namespace Libretro
 namespace Options
 {
 static std::vector<retro_variable> optionsList;
-static std::vector<bool*> dirtyPtrList;
+static std::unordered_map<std::string, std::string> optionCache;
+static std::unordered_map<std::string, bool> optionDirty;
 
-template <typename T>
-void Option<T>::Register()
-{
-  if (!m_options.empty())
-    return;
+// Category key constants
+static constexpr const char* CATEGORY_CORE = "core";
+static constexpr const char* CATEGORY_AUDIO = "audio";
+static constexpr const char* CATEGORY_INTERFACE = "interface";
+static constexpr const char* CATEGORY_SYSCONF = "sysconf";
+static constexpr const char* CATEGORY_GFX_HARDWARE = "graphics_hardware";
+static constexpr const char* CATEGORY_GFX_SETTINGS = "graphics_settings";
+static constexpr const char* CATEGORY_GFX_ENHANCEMENTS = "graphics_enhancements";
+static constexpr const char* CATEGORY_GFX_HACKS = "graphics_hacks";
+static constexpr const char* CATEGORY_WIIMOTE = "wiimote";
 
-  m_options = m_name;
-  m_options.push_back(';');
-  for (auto& option : m_list)
+// V2 Categories
+static const struct retro_core_option_v2_category option_cats[] = {
   {
-    if (option.first == m_list.begin()->first)
-      m_options += std::string(" ") + option.first;
-    else
-      m_options += std::string("|") + option.first;
-  }
-  optionsList.push_back({m_id, m_options.c_str()});
-  dirtyPtrList.push_back(&m_dirty);
-  Updated();
-  m_dirty = true;
-}
-
-template <typename T>
-Option<T>::Option(const char* id, const char* name,
-                  const std::vector<std::pair<std::string, T>>& list)
-  : m_id(id), m_name(name), m_list(list)
-{
-  Register();
-}
-
-template <>
-void Option<PowerPC::CPUCore>::FilterForJitCapability()
-{
-  bool can_jit = false;
-  if (Libretro::environ_cb &&
-      Libretro::environ_cb(RETRO_ENVIRONMENT_GET_JIT_CAPABLE, &can_jit) &&
-      !can_jit)
+    CATEGORY_CORE,
+    "Core",
+    "Configure CPU emulation, timing, and core system settings."
+  },
   {
-    m_list.erase(
-      std::remove_if(m_list.begin(), m_list.end(),
-                     [](const auto& p) {
+    CATEGORY_AUDIO,
+    "Audio / DSP",
+    "Configure audio output and DSP emulation."
+  },
+  {
+    CATEGORY_INTERFACE,
+    "Interface",
+    "Configure on-screen display and logging."
+  },
+  {
+    CATEGORY_SYSCONF,
+    "System Configuration",
+    "Configure Wii system settings."
+  },
+  {
+    CATEGORY_GFX_HARDWARE,
+    "Graphics > Hardware",
+    "Configure graphics hardware options."
+  },
+  {
+    CATEGORY_GFX_SETTINGS,
+    "Graphics > Settings",
+    "Configure rendering backend and quality settings."
+  },
+  {
+    CATEGORY_GFX_ENHANCEMENTS,
+    "Graphics > Enhancements",
+    "Configure texture filtering and visual enhancements."
+  },
+  {
+    CATEGORY_GFX_HACKS,
+    "Graphics > Hacks",
+    "Configure accuracy vs performance tradeoffs."
+  },
+  {
+    CATEGORY_WIIMOTE,
+    "Wiimote IR",
+    "Configure Wiimote infrared pointer settings."
+  },
+  { NULL, NULL, NULL }
+};
+
 #if defined(_M_X86_64)
-                       return p.second == PowerPC::CPUCore::JIT64;
+  #define CPU_CORE_DEFAULT "1"
+  #define CPU_CORE_JIT_ENTRY { "1", "JIT64 (Recommended)" },
 #elif defined(_M_ARM_64)
-                       return p.second == PowerPC::CPUCore::JITARM64;
+  #define CPU_CORE_DEFAULT "4"
+  #define CPU_CORE_JIT_ENTRY { "4", "JITARM64 (Recommended)" },
 #else
-                       return false;
+  #define CPU_CORE_DEFAULT "5"
+  #define CPU_CORE_JIT_ENTRY
 #endif
-                     }),
-      m_list.end());
 
-    Libretro::Options::cpu_core.Rebuild();
-    Libretro::Options::SetVariables();
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+static struct retro_core_option_v2_definition option_defs[] = {
+
+  // ========== Main.Core ==========
+  {
+    Libretro::Options::core::CPU_CORE,
+    "CPU Core",
+    nullptr,
+    "Select CPU emulation method - JIT provides best performance.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "0", "Interpreter (slowest)" },
+      CPU_CORE_JIT_ENTRY
+      { "5", "Cached Interpreter (slower)" },
+      { nullptr, nullptr }
+    },
+    CPU_CORE_DEFAULT
+  },
+  {
+    Libretro::Options::core::CPU_CLOCK_RATE,
+    "CPU Clock Rate",
+    nullptr,
+    "Adjust emulated CPU speed.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "0.05", "5%"  }, { "0.10", "10%" }, { "0.20", "20%" }, { "0.30", "30%" },
+      { "0.40", "40%" }, { "0.50", "50%" }, { "0.60", "60%" }, { "0.70", "70%" },
+      { "0.80", "80%" }, { "0.90", "90%" }, { "1.00", "100% (Default)" },
+      { "1.50", "150%" }, { "2.00", "200%" }, { "2.50", "250%" }, { "3.00", "300%" },
+      { nullptr, nullptr }
+    },
+    "1.00"
+  },
+  {
+    Libretro::Options::core::EMULATION_SPEED,
+    "Emulation Speed",
+    nullptr,
+    "Set speed limit for emulation.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "1.0", "100% (Normal Speed)" },
+      { "0.0", "Unlimited" },
+      { nullptr, nullptr }
+    },
+    "0.0"
+  },
+  /*{
+    Libretro::Options::core::MAIN_CPU_THREAD,
+    "Dual Core Mode",
+    nullptr,
+    "Enable dual-core CPU emulation.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", "Disabled" },
+      { "enabled",  "Enabled" },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },*/
+  {
+    Libretro::Options::core::MAIN_PRECISION_FRAME_TIMING,
+    "Precision Frame Timing",
+    nullptr,
+    "Use busy-wait for more accurate frame timing.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+#if defined(ANDROID)
+    "disabled"
+#else
+    "enabled"
+#endif
+  },
+  {
+    Libretro::Options::core::FASTMEM,
+    "Fastmem",
+    nullptr,
+    "Enable fastmem optimization - which uses memory mapping for faster access.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::audio::DSP_HLE,
+    "DSP HLE",
+    nullptr,
+    "Choose DSP method - HLE is faster, LLE is more accurate.",
+    nullptr,
+    CATEGORY_AUDIO,
+    {
+      { "enabled",  "HLE (Fast)" },
+      { "disabled", "LLE (Accurate)" },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::core::CHEATS_ENABLED,
+    "Internal Cheats",
+    nullptr,
+    "Enable built-in cheat codes.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::core::LANGUAGE,
+    "System Language",
+    nullptr,
+    "Set system language.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "1", "English" }, // DiscIO::Language::English
+      { "0", "Japanese" }, // DiscIO::Language::Japanese
+      { "2", "German" }, // DiscIO::Language::German
+      { "3" "French" }, // DiscIO::Language::French
+      { "4", "Spanish" }, // DiscIO::Language::Spanish
+      { "5", "Italian" }, // DiscIO::Language::Italian
+      { "6", "Dutch" }, // DiscIO::Language::Dutch
+      { "7", "Simplified Chinese" }, // DiscIO::Language::SimplifiedChinese
+      { "8", "Traditional Chinese" }, // DiscIO::Language::TraditionalChinese
+      { "9", "Korean" }, // DiscIO::Language::Korean
+      { nullptr, nullptr }
+    },
+    "1"
+  },
+  {
+    Libretro::Options::core::FAST_DISC_SPEED,
+    "Speed Up Disc Transfer",
+    nullptr,
+    "Reduce loading times.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::core::MAIN_MMU,
+    "Enable MMU",
+    nullptr,
+    "Enable emulation of the Memory Management Unit.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING,
+    "Wiimote Continuous Scanning",
+    nullptr,
+    "Continuously scan for Wiimotes.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII,
+    "Alt GC Ports (Wii)",
+    nullptr,
+    "Use ports 5-8 for GameCube controllers in Wii mode.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::audio::MIXER_RATE,
+    "Audio Mixer Rate",
+    nullptr,
+    "Audio sample rate.",
+    nullptr,
+    CATEGORY_AUDIO,
+    {
+      { "32000", "32000 Hz" },
+      { "48000", "48000 Hz" },
+      { nullptr, nullptr }
+    },
+    "32000"
+  },
+
+  // ========== Main.Interface ==========
+  {
+    Libretro::Options::main_interface::OSD_ENABLED,
+    "On-Screen Display",
+    nullptr,
+    "Show OSD messages.",
+    nullptr,
+    CATEGORY_INTERFACE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+
+  // ========== Main.DSP ==========
+  {
+    Libretro::Options::audio::DSP_JIT,
+    "DSP JIT",
+    nullptr,
+    "Enable JIT for DSP LLE.",
+    nullptr,
+    CATEGORY_AUDIO,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+
+  // ========== SYSCONF.IPL ==========
+  {
+    Libretro::Options::sysconf::WIDESCREEN,
+    "Widescreen (Wii)",
+    nullptr,
+    "Enable widescreen for Wii.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::sysconf::PROGRESSIVE_SCAN,
+    "Progressive Scan",
+    nullptr,
+    "Enable progressive scan.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::sysconf::PAL60,
+    "PAL60 Mode",
+    nullptr,
+    "Enable 60Hz for PAL games.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+
+  // ========== SYSCONF.BT ==========
+  {
+    Libretro::Options::sysconf::SENSOR_BAR_POSITION,
+    "Sensor Bar Position",
+    nullptr,
+    "Set Wiimote sensor bar position.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "0", "Bottom" },
+      { "1", "Top" },
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::sysconf::ENABLE_RUMBLE,
+    "Controller Rumble",
+    nullptr,
+    "Enable rumble feedback.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+
+  // ========== Graphics.Hardware ==========
+  /*{
+    Libretro::Options::gfx_hardware::VSYNC,
+    "VSync",
+    nullptr,
+    "Sync with display refresh.",
+    nullptr,
+    CATEGORY_GFX_HARDWARE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },*/
+
+  // ========== Graphics.Settings ==========
+  {
+    Libretro::Options::gfx_settings::RENDERER,
+    "Graphics Backend",
+    nullptr,
+    "Select rendering backend.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "Hardware", "Hardware" },
+  #if defined(_DEBUG) || defined(DEBUGFAST)
+      { "Software", "Software Renderer" },
+      { "Null",     "Null Renderer" },
+  #endif
+      { nullptr, nullptr }
+    },
+    "Hardware"
+  },
+  {
+    Libretro::Options::gfx_settings::WIDESCREEN_HACK,
+    "Widescreen Hack",
+    nullptr,
+    "Force 16:9 rendering.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_settings::EFB_SCALE,
+    "Internal Resolution",
+    nullptr,
+    "Multiply native resolution.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "1", "1x Native (640x528)" },
+      { "2", "2x Native (1280x1056) for 720p" },
+      { "3", "3x Native (1920x1584) for 1080p" },
+      { "4", "4x Native (2560x2112) for 1440p" },
+      { "5", "5x Native (3200x2640)" },
+      { "6", "6x Native (3840x3168) for 4K" },
+      { nullptr, nullptr }
+    },
+    "1"
+  },
+  {
+    Libretro::Options::gfx_settings::SHADER_COMPILATION_MODE,
+    "Shader Compilation",
+    nullptr,
+    "Control shader compilation.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "0", "Synchronous" }, // ShaderCompilationMode::Synchronous
+      { "3", "Async (Skip Rendering)" }, // ShaderCompilationMode::AsynchronousSkipRendering
+      { "1", "Sync (UberShaders)" }, // ShaderCompilationMode::SynchronousUberShaders
+      { "2", "Async (UberShaders)" }, // ShaderCompilationMode::AsynchronousUberShaders
+      { nullptr, nullptr }
+    },
+    STR(ShaderCompilationMode::Synchronous)
+  },
+  {
+    Libretro::Options::gfx_settings::WAIT_FOR_SHADERS,
+    "Wait for Shaders",
+    nullptr,
+    "Precompile shaders before starting.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_settings::ANTI_ALIASING,
+    "Anti-Aliasing",
+    nullptr,
+    "Reduce jagged edges.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "0", "None" },
+      { "1", "2x MSAA" },
+      { "2", "4x MSAA" },
+      { "3", "8x MSAA" },
+      { "4", "2x SSAA" },
+      { "5", "4x SSAA" },
+      { "6", "8x SSAA" },
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::gfx_settings::TEXTURE_CACHE_ACCURACY,
+    "Texture Cache Accuracy",
+    nullptr,
+    "Texture cache safety level.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "128", "Fast" },
+      { "512", "Middle" },
+      { "0",   "Safe" },
+      { nullptr, nullptr }
+    },
+    "128"
+  },
+  {
+    Libretro::Options::gfx_enhancements::LOAD_CUSTOM_TEXTURES,
+    "Load Custom Textures",
+    nullptr,
+    "Load high-res texture packs.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_enhancements::CACHE_CUSTOM_TEXTURES,
+    "Prefetch Custom Textures",
+    nullptr,
+    "Preload custom textures.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_settings::GPU_TEXTURE_DECODING,
+    "GPU Texture Decoding",
+    nullptr,
+    "Decode textures on GPU.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_settings::ENABLE_PIXEL_LIGHTING,
+    "Pixel Lighting",
+    nullptr,
+    "Enable per-pixel lighting calculations instead of per-vertex.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_settings::FAST_DEPTH_CALCULATION,
+    "Fast Depth Calculation",
+    nullptr,
+    "Use faster depth calculation.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_settings::DISABLE_FOG,
+    "Disable Fog",
+    nullptr,
+    "Disable fog rendering effects. May improve performance but reduces visual accuracy.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+
+  // ========== Graphics.Enhancements ==========
+  {
+    Libretro::Options::gfx_enhancements::FORCE_TEXTURE_FILTERING_MODE,
+    "Texture Filtering",
+    nullptr,
+    "Override texture filtering.",
+    nullptr,
+    CATEGORY_GFX_ENHANCEMENTS,
+    {
+      { "0", "Default" }, // TextureFilteringMode::Default
+      { "1", "Nearest (Sharp)" }, // TextureFilteringMode::Nearest
+      { "2",  "Linear (Smooth)" }, // TextureFilteringMode::Linear
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::gfx_enhancements::MAX_ANISOTROPY,
+    "Anisotropic Filtering",
+    nullptr,
+    "Improve texture quality at angles.",
+    nullptr,
+    CATEGORY_GFX_ENHANCEMENTS,
+    {
+      { "0", "1x (Off)" }, // AnisotropicFilteringMode::Force1x
+      { "1", "2x" }, // AnisotropicFilteringMode::Force2x
+      { "2", "4x" }, // AnisotropicFilteringMode::Force4x
+      { "3", "8x" }, // AnisotropicFilteringMode::Force8x
+      { "4", "16x" }, // AnisotropicFilteringMode::Force16x
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::gfx_enhancements::GFX_ENHANCE_OUTPUT_RESAMPLING,
+    "Output Resampling",
+    nullptr,
+    "Select the resampling filter used when scaling the final image.",
+    nullptr,
+    CATEGORY_GFX_ENHANCEMENTS,
+    {
+      { "0", "Default" },
+      { "1", "Bilinear" },
+      { "2", "B-Spline" },
+      { "3","Mitchell-Netravali" },
+      { "4", "Catmull-Rom" },
+      { "5", "Sharp Bilinear" },
+      { "6", "Area Sampling" },
+      { nullptr, nullptr }
+    },
+    "default"
+  },
+  {
+    Libretro::Options::gfx_enhancements::FORCE_TRUE_COLOR,
+    "Force True Color",
+    nullptr,
+    "Disable dithering and force 24-bit color output instead of 18-bit.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_enhancements::GFX_ENHANCE_DISABLE_COPY_FILTER,
+    "Disable Copy Filter",
+    nullptr,
+    "Disable the GameCube/Wii copy filter. Removes blur from some games but may reduce accuracy.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_enhancements::GFX_ENHANCE_HDR_OUTPUT,
+    "HDR Output",
+    nullptr,
+    "Enable High Dynamic Range output when supported by the graphics backend and display.",
+    nullptr,
+    CATEGORY_GFX_ENHANCEMENTS,
+    {
+      { "disabled", "Disabled" },
+      { "enabled",  "Enabled" },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_enhancements::GFX_ARBITRARY_MIPMAP_DETECTION,
+    "Arbitrary Mipmap Detection",
+    nullptr,
+    "Enable detection of arbitrary mipmaps. Improves accuracy in some games but may reduce performance.",
+    nullptr,
+    CATEGORY_GFX_SETTINGS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+
+  // ========== Graphics.Hacks ==========
+  {
+    Libretro::Options::gfx_hacks::EFB_ACCESS_ENABLE,
+    "EFB Access from CPU",
+    nullptr,
+    "Allow CPU EFB access. Required for some games but slow.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EFB_ACCESS_DEFER_INVALIDATION,
+    "EFB Access Defer Invalidation",
+    nullptr,
+    "Defer EFB cache invalidation.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EFB_ACCESS_TILE_SIZE,
+    "EFB Access Tile Size",
+    nullptr,
+    "EFB access granularity.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "1",   "1 (per-pixel, slowest/most accurate)" },
+      { "4",   "4" },
+      { "8",   "8" },
+      { "16",  "16" },
+      { "32",  "32" },
+      { "64",  "64 (default)" },
+      { nullptr, nullptr }
+    },
+    "64"
+  },
+  {
+    Libretro::Options::gfx_hacks::BBOX_ENABLED,
+    "Bounding Box",
+    nullptr,
+    "Emulate bounding box hardware. Required for Paper Mario TTYD.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::FORCE_PROGRESSIVE,
+    "Force Progressive",
+    nullptr,
+    "Force progressive scan.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EFB_TO_TEXTURE,
+    "Skip EFB Copy to RAM",
+    nullptr,
+    "Store EFB in texture memory.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::XFB_TO_TEXTURE_ENABLE,
+    "Skip XFB Copy to RAM",
+    nullptr,
+    "Store XFB in texture memory.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EFB_TO_VRAM,
+    "Disable EFB to VRAM",
+    nullptr,
+    "Disable EFB VRAM copies.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::DEFER_EFB_COPIES,
+    "Defer EFB Copies",
+    nullptr,
+    "Defer EFB copies until needed.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::IMMEDIATE_XFB,
+    "Immediate XFB",
+    nullptr,
+    "Display XFB immediately.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::SKIP_DUPE_FRAMES,
+    "Skip Duplicate Frames",
+    nullptr,
+    "Don't present duplicate frames.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EARLY_XFB_OUTPUT,
+    "Early XFB Output",
+    nullptr,
+    "Output XFB early.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EFB_SCALED_COPY,
+    "EFB Scaled Copy",
+    nullptr,
+    "Scale EFB copy by IR.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::EFB_EMULATE_FORMAT_CHANGES,
+    "EFB Emulate Format Changes",
+    nullptr,
+    "Emulate EFB format changes (needed for some effects).",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::VERTEX_ROUNDING,
+    "Vertex Rounding",
+    nullptr,
+    "Round vertex positions to avoid gaps.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::VI_SKIP,
+    "VI Skip",
+    nullptr,
+    "Skip VI updates to improve performance.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::gfx_hacks::FAST_TEXTURE_SAMPLING,
+    "Fast Texture Sampling",
+    nullptr,
+    "Use faster but less accurate texture sampling.",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  #ifdef __APPLE__
+  {
+    Libretro::Options::gfx_hacks::NO_MIPMAPPING,
+    "Disable Mipmapping",
+    nullptr,
+    "Disable mipmapping (workaround for macOS drivers).",
+    nullptr,
+    CATEGORY_GFX_HACKS,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  #endif
+
+  // ========== Wiimote IR ==========
+  {
+    Libretro::Options::wiimote::IR_MODE,
+    "Wiimote IR Mode",
+    nullptr,
+    "Control method for Wiimote pointer.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "0", "Right Stick controls pointer (relative)" },
+      { "1", "Right Stick controls pointer (absolute)" },
+      { "2", "Mouse controls pointer" },
+      { nullptr, nullptr }
+    },
+    "1"
+  },
+  {
+    Libretro::Options::wiimote::IR_OFFSET,
+    "Wiimote IR Vertical Offset",
+    nullptr,
+    "Adjust vertical center of Wiimote pointer.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      // Positive offsets
+      { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
+      { "15", nullptr }, { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr },
+      { "20", nullptr }, { "21", nullptr }, { "22", nullptr }, { "23", nullptr }, { "24", nullptr },
+      { "25", nullptr }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
+      { "30", nullptr }, { "31", nullptr }, { "32", nullptr }, { "33", nullptr }, { "34", nullptr },
+      { "35", nullptr }, { "36", nullptr }, { "37", nullptr }, { "38", nullptr }, { "39", nullptr },
+      { "40", nullptr }, { "41", nullptr }, { "42", nullptr }, { "43", nullptr }, { "44", nullptr },
+      { "45", nullptr }, { "46", nullptr }, { "47", nullptr }, { "48", nullptr }, { "49", nullptr },
+      { "50", nullptr },
+      // Negative offsets
+      { "-50", nullptr }, { "-49", nullptr }, { "-48", nullptr }, { "-47", nullptr }, { "-46", nullptr },
+      { "-45", nullptr }, { "-44", nullptr }, { "-43", nullptr }, { "-42", nullptr }, { "-41", nullptr },
+      { "-40", nullptr }, { "-39", nullptr }, { "-38", nullptr }, { "-37", nullptr }, { "-36", nullptr },
+      { "-35", nullptr }, { "-34", nullptr }, { "-33", nullptr }, { "-32", nullptr }, { "-31", nullptr },
+      { "-30", nullptr }, { "-29", nullptr }, { "-28", nullptr }, { "-27", nullptr }, { "-26", nullptr },
+      { "-25", nullptr }, { "-24", nullptr }, { "-23", nullptr }, { "-22", nullptr }, { "-21", nullptr },
+      { "-20", nullptr }, { "-19", nullptr }, { "-18", nullptr }, { "-17", nullptr }, { "-16", nullptr },
+      { "-15", nullptr }, { "-14", nullptr }, { "-13", nullptr }, { "-12", nullptr }, { "-11", nullptr },
+      { "-10", nullptr }, { "-9", nullptr }, { "-8", nullptr }, { "-7", nullptr }, { "-6", nullptr },
+      { "-5", nullptr }, { "-4", nullptr }, { "-3", nullptr }, { "-2", nullptr }, { "-1", nullptr },
+      // Zero
+      { "0", "0 (Center)" },
+      // Small positives
+      { "1", nullptr }, { "2", nullptr }, { "3", nullptr }, { "4", nullptr }, { "5", nullptr },
+      { "6", nullptr }, { "7", nullptr }, { "8", nullptr }, { "9", nullptr },
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::wiimote::IR_YAW,
+    "Wiimote IR Total Yaw",
+    nullptr,
+    "Horizontal field of view for Wiimote pointer.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "15", "15 (Default)" }, { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr },
+      { "20", nullptr }, { "21", nullptr }, { "22", nullptr }, { "23", nullptr }, { "24", nullptr },
+      { "25", nullptr }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
+      { "30", nullptr }, { "31", nullptr }, { "32", nullptr }, { "33", nullptr }, { "34", nullptr },
+      { "35", nullptr }, { "36", nullptr }, { "37", nullptr }, { "38", nullptr }, { "39", nullptr },
+      { "40", nullptr }, { "41", nullptr }, { "42", nullptr }, { "43", nullptr }, { "44", nullptr },
+      { "45", nullptr }, { "46", nullptr }, { "47", nullptr }, { "48", nullptr }, { "49", nullptr },
+      { "50", nullptr }, { "51", nullptr }, { "52", nullptr }, { "53", nullptr }, { "54", nullptr },
+      { "55", nullptr }, { "56", nullptr }, { "57", nullptr }, { "58", nullptr }, { "59", nullptr },
+      { "60", nullptr }, { "61", nullptr }, { "62", nullptr }, { "63", nullptr }, { "64", nullptr },
+      { "65", nullptr }, { "66", nullptr }, { "67", nullptr }, { "68", nullptr }, { "69", nullptr },
+      { "70", nullptr }, { "71", nullptr }, { "72", nullptr }, { "73", nullptr }, { "74", nullptr },
+      { "75", nullptr }, { "76", nullptr }, { "77", nullptr }, { "78", nullptr }, { "79", nullptr },
+      { "80", nullptr }, { "81", nullptr }, { "82", nullptr }, { "83", nullptr }, { "84", nullptr },
+      { "85", nullptr }, { "86", nullptr }, { "87", nullptr }, { "88", nullptr }, { "89", nullptr },
+      { "90", nullptr }, { "91", nullptr }, { "92", nullptr }, { "93", nullptr }, { "94", nullptr },
+      { "95", nullptr }, { "96", nullptr }, { "97", nullptr }, { "98", nullptr }, { "99", nullptr },
+      { "100", nullptr },
+      { "0", nullptr }, { "1", nullptr }, { "2", nullptr }, { "3", nullptr }, { "4", nullptr },
+      { "5", nullptr }, { "6", nullptr }, { "7", nullptr }, { "8", nullptr }, { "9", nullptr },
+      { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
+      { nullptr, nullptr }
+    },
+    "15"
+  },
+  {
+    Libretro::Options::wiimote::IR_PITCH,
+    "Wiimote IR Total Pitch",
+    nullptr,
+    "Vertical field of view for Wiimote pointer.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "15", "15 (Default)" },
+      { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr },
+      { "20", nullptr }, { "21", nullptr }, { "22", nullptr }, { "23", nullptr }, { "24", nullptr },
+      { "25", nullptr }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
+      { "30", nullptr }, { "31", nullptr }, { "32", nullptr }, { "33", nullptr }, { "34", nullptr },
+      { "35", nullptr }, { "36", nullptr }, { "37", nullptr }, { "38", nullptr }, { "39", nullptr },
+      { "40", nullptr }, { "41", nullptr }, { "42", nullptr }, { "43", nullptr }, { "44", nullptr },
+      { "45", nullptr }, { "46", nullptr }, { "47", nullptr }, { "48", nullptr }, { "49", nullptr },
+      { "50", nullptr }, { "51", nullptr }, { "52", nullptr }, { "53", nullptr }, { "54", nullptr },
+      { "55", nullptr }, { "56", nullptr }, { "57", nullptr }, { "58", nullptr }, { "59", nullptr },
+      { "60", nullptr }, { "61", nullptr }, { "62", nullptr }, { "63", nullptr }, { "64", nullptr },
+      { "65", nullptr }, { "66", nullptr }, { "67", nullptr }, { "68", nullptr }, { "69", nullptr },
+      { "70", nullptr }, { "71", nullptr }, { "72", nullptr }, { "73", nullptr }, { "74", nullptr },
+      { "75", nullptr }, { "76", nullptr }, { "77", nullptr }, { "78", nullptr }, { "79", nullptr },
+      { "80", nullptr }, { "81", nullptr }, { "82", nullptr }, { "83", nullptr }, { "84", nullptr },
+      { "85", nullptr }, { "86", nullptr }, { "87", nullptr }, { "88", nullptr }, { "89", nullptr },
+      { "90", nullptr }, { "91", nullptr }, { "92", nullptr }, { "93", nullptr }, { "94", nullptr },
+      { "95", nullptr }, { "96", nullptr }, { "97", nullptr }, { "98", nullptr }, { "99", nullptr },
+      { "100", nullptr },
+      { "0", nullptr }, { "1", nullptr }, { "2", nullptr }, { "3", nullptr }, { "4", nullptr },
+      { "5", nullptr }, { "6", nullptr }, { "7", nullptr }, { "8", nullptr }, { "9", nullptr },
+      { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
+      { nullptr, nullptr }
+    },
+    "15"
+  },
+
+  // ========== Other ==========
+  {
+    Libretro::Options::main_interface::LOG_LEVEL,
+    "Log Level",
+    nullptr,
+    "Set log verbosity.",
+    nullptr,
+    CATEGORY_INTERFACE,
+    {
+      { "1", "Notice" },  // VERY important information that is NOT errors. Like startup and OSReports.
+      { "2", "Error" },   // Critical errors
+      { "3", "Warning" }, // Something is suspicious.
+      { "4", "Info" },    // General information
+#if defined(_DEBUG) || defined(DEBUGFAST)
+      { "5", "Debug" },   // Detailed debugging - might make things slow
+#endif
+      { nullptr,   nullptr }
+    },
+    "Info"
+  },
+  {
+    Libretro::Options::audio::CALL_BACK_AUDIO,
+    "Async Audio Callback",
+    nullptr,
+    "Use asynchronous audio callbacks.",
+    "Pushes audio asynchronously instead of synchronously.",
+    CATEGORY_AUDIO,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }
+};
+
+void RegisterAllOptions()
+{
+  // For legacy frontend fallback
+  for (const retro_core_option_v2_definition* def = option_defs;
+       def && def->key;
+       ++def)
+  {
+    optionsList.push_back({def->key, def->desc});
+    optionCache[def->key] = def->default_value ? def->default_value : "";
+    //optionDirty[def->key] = true;
   }
-}
-
-static std::vector<std::pair<std::string, PowerPC::CPUCore>> BuildCPUCoreList()
-{
-  std::vector<std::pair<std::string, PowerPC::CPUCore>> list;
-
-#if defined(_M_X86_64)
-  list.emplace_back("JIT64", PowerPC::CPUCore::JIT64);
-#endif
-#if defined(_M_ARM_64)
-  list.emplace_back("JITARM64", PowerPC::CPUCore::JITARM64);
-#endif
-
-  list.emplace_back("Interpreter", PowerPC::CPUCore::Interpreter);
-  list.emplace_back("Cached Interpreter", PowerPC::CPUCore::CachedInterpreter);
-
-  return list;
-}
-
-void SetVariables()
-{
-  if (optionsList.empty())
-    return;
-  if (optionsList.back().key)
-    optionsList.push_back({});
-  ::Libretro::environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void*)optionsList.data());
 }
 
 void CheckVariables()
 {
   bool updated = false;
   if (::Libretro::environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && !updated)
+  {
     return;
+  }
 
-  for (bool* ptr : dirtyPtrList)
-    *ptr = true;
+  for (auto& [key, oldVal] : optionCache)
+  {
+    retro_variable var{ key.c_str(), nullptr };
+    if (::Libretro::environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+      std::string newVal = var.value;
+      if (newVal != oldVal)
+      {
+        oldVal = newVal;
+        optionDirty[key] = true;
+      }
+    }
+  }
 }
 
-template <typename T>
-Option<T>::Option(const char* id, const char* name,
-                  std::initializer_list<std::pair<const char*, T>> list)
-    : m_id(id), m_name(name), m_list(list.begin(), list.end())
+void SetVariables()
 {
-  Register();
+  unsigned version = 0;
+
+  if (::Libretro::environ_cb(RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION, &version) &&
+      version >= 2)
+  {
+    struct retro_core_options_v2 options_v2 = {
+      const_cast<retro_core_option_v2_category*>(option_cats),
+      const_cast<retro_core_option_v2_definition*>(option_defs)
+    };
+
+    if (::Libretro::environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &options_v2))
+    {
+      return;
+    }
+  }
+
+  // fall back
+  if (!optionsList.empty())
+  {
+    if (optionsList.back().key)
+      optionsList.push_back({});
+    ::Libretro::environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void*)optionsList.data());
+  }
 }
 
-template <typename T>
-Option<T>::Option(const char* id, const char* name, std::initializer_list<const char*> list)
-    : m_id(id), m_name(name)
+bool Updated(const char* key)
 {
-  for (auto option : list)
-    m_list.push_back({option, (T)m_list.size()});
-  Register();
+  auto it = optionDirty.find(key);
+  if (it != optionDirty.end() && it->second) {
+    it->second = false; // consume the dirty flag
+    return true;
+  }
+
+  return false;
 }
+
+// bool specialisation
 template <>
-Option<std::string>::Option(const char* id, const char* name,
-                            std::initializer_list<const char*> list)
-    : m_id(id), m_name(name)
+bool GetCached<bool>(const char* key, const bool def)
 {
-  for (auto option : list)
-    m_list.push_back({option, option});
-  Register();
+  auto it = optionCache.find(key);
+  if (it == optionCache.end())
+    return def;
+  const std::string& v = it->second;
+  if (v == "enabled" || v == "true" || v == "1") return true;
+  if (v == "disabled" || v == "false" || v == "0") return false;
+  return def;
 }
+
+// int specialisation
 template <>
-Option<const char*>::Option(const char* id, const char* name,
-                            std::initializer_list<const char*> list)
-    : m_id(id), m_name(name)
+int GetCached<int>(const char* key, const int def)
 {
-  for (auto option : list)
-    m_list.push_back({option, option});
-  Register();
+  auto it = optionCache.find(key);
+  if (it == optionCache.end())
+    return def;
+  char* end = nullptr;
+  long parsed = strtol(it->second.c_str(), &end, 10);
+  return (end != it->second.c_str()) ? static_cast<int>(parsed) : def;
 }
 
-template <typename T>
-Option<T>::Option(const char* id, const char* name, T first,
-                  std::initializer_list<const char*> list)
-    : m_id(id), m_name(name)
-{
-  for (auto option : list)
-    m_list.push_back({option, first + (int)m_list.size()});
-  Register();
-}
-
-template <typename T>
-Option<T>::Option(const char* id, const char* name, T first, int count, int step)
-    : m_id(id), m_name(name)
-{
-  for (T i = first; i < first + count; i += step)
-    m_list.push_back({std::to_string(i), i});
-  Register();
-}
-
+// double specialisation
 template <>
-Option<bool>::Option(const char* id, const char* name, bool initial) : m_id(id), m_name(name)
+double GetCached<double>(const char* key, double def)
 {
-  m_list.push_back({initial ? "enabled" : "disabled", initial});
-  m_list.push_back({!initial ? "enabled" : "disabled", !initial});
-  Register();
+  auto it = optionCache.find(key);
+  if (it == optionCache.end())
+    return def;
+  char* end = nullptr;
+  double parsed = strtod(it->second.c_str(), &end);
+  return (end != it->second.c_str()) ? parsed : def;
 }
 
+// std::string specialisation
 template <>
-Option<int>::Option(const char* id, const char* name, int initial)
-    : m_id(id), m_name(name)
+std::string GetCached<std::string>(const char* key, const std::string def)
 {
-    m_list.push_back({std::to_string(initial), initial});
-    Register();
+  auto it = optionCache.find(key);
+  return (it != optionCache.end()) ? it->second : def;
 }
-
-// Main.Core
-Option<PowerPC::CPUCore> cpu_core("dolphin_cpu_core", "CPU Core", BuildCPUCoreList());
-Option<float> cpuClockRate("dolphin_cpu_clock_rate", "CPU Clock Rate",
-                           {{"100%", 1.0f}, {"150%", 1.5f}, {"200%", 2.0f}, {"250%", 2.5f}, {"300%", 3.0f},
-                            {"5%", 0.05f}, {"10%", 0.1f}, {"20%", 0.2f}, {"30%", 0.3f}, {"40%", 0.4f},
-                            {"50%", 0.5f}, {"60%", 0.6f}, {"70%", 0.7f}, {"80%", 0.8f}, {"90%", 0.9f}});
-Option<float> EmulationSpeed("dolphin_emulation_speed", "Emulation Speed",
-                             {{"100%", 1.0f}, {"unlimited", 0.0f}});
-Option<bool> fastmem("dolphin_fastmem", "Fastmem", true);
-Option<bool> DSPHLE("dolphin_dsp_hle", "DSP HLE", true);
-Option<bool> cheatsEnabled("dolphin_cheats_enabled", "Internal Cheats Enabled", false);
-Option<DiscIO::Language> Language("dolphin_language", "Language",
-                                  {{"English", DiscIO::Language::English},
-                                   {"Japanese", DiscIO::Language::Japanese},
-                                   {"German", DiscIO::Language::German},
-                                   {"French", DiscIO::Language::French},
-                                   {"Spanish", DiscIO::Language::Spanish},
-                                   {"Italian", DiscIO::Language::Italian},
-                                   {"Dutch", DiscIO::Language::Dutch},
-                                   {"Simplified Chinese", DiscIO::Language::SimplifiedChinese},
-                                   {"Traditional Chinese", DiscIO::Language::TraditionalChinese},
-                                   {"Korean", DiscIO::Language::Korean}});
-Option<bool> fastDiscSpeed("dolphin_fast_disc_speed", "Speed Up Disc Transfer Rate", false);
-Option<bool> WiimoteContinuousScanning("dolphin_wiimote_continuous_scanning", "Wiimote Continuous Scanning", false);
-Option<bool> altGCPorts("dolphin_alt_gc_ports_on_wii", "Use ports 5-8 for GameCube controllers in Wii mode", false);
-Option<unsigned int> audioMixerRate("dolphin_mixer_rate", "Audio Mixer Rate",
-                                    {{"32000", 32000u}, {"48000", 48000u}});
-
-// Main.Interface
-Option<bool> osdEnabled("dolphin_osd_enabled", "OSD Enabled", true);
-
-// Main.DSP
-Option<bool> DSPEnableJIT("dolphin_dsp_jit", "DSP Enable JIT", true);
-
-// SYSCONF.IPL
-Option<bool> Widescreen("dolphin_widescreen", "Widescreen (Wii)", true);
-Option<bool> progressiveScan("dolphin_progressive_scan", "Progressive Scan", true);
-Option<bool> pal60("dolphin_pal60", "PAL60", true);
-
-// SYSCONF.BT
-Option<u32> sensorBarPosition("dolphin_sensor_bar_position", "Sensor Bar Position", {"Bottom", "Top"});
-Option<bool> enableRumble("dolphin_enable_rumble", "Rumble", true);
-
-// Graphics.Hardware
-Option<bool> vSync("dolphin_vysnc", "VSync", false);
-
-// Graphics.Settings
-Option<std::string> renderer("dolphin_renderer", "Renderer",
-{
-  "Hardware"
-#if defined(_DEBUG) || defined(DEBUGFAST)
-  , "Software", "Null"
-#endif
-});
-Option<bool> WidescreenHack("dolphin_widescreen_hack", "WideScreen Hack", false);
-Option<int> efbScale("dolphin_efb_scale", "Internal Resolution", 1,
-                     {"x1 (640 x 528)", "x2 (1280 x 1056)", "x3 (1920 x 1584)",
-                      "x4 (2560 x 2112)", "x5 (3200 x 2640)", "x6 (3840 x 3168)"});
-Option<ShaderCompilationMode> shaderCompilationMode(
-    "dolphin_shader_compilation_mode", "Shader Compilation Mode",
-    {{"sync", ShaderCompilationMode::Synchronous},
-     {"a-sync Skip Rendering", ShaderCompilationMode::AsynchronousSkipRendering},
-     {"sync UberShaders", ShaderCompilationMode::SynchronousUberShaders},
-     {"a-sync UberShaders", ShaderCompilationMode::AsynchronousUberShaders}});
-Option<bool> waitForShaders("dolphin_wait_for_shaders", "Wait for Shaders before Starting", false);
-Option<int> antiAliasing("dolphin_anti_aliasing", "Anti-Aliasing",
-                         {"None", "2x MSAA", "4x MSAA", "8x MSAA", "2x SSAA", "4x SSAA", "8x SSAA"});
-Option<int> textureCacheAccuracy("dolphin_texture_cache_accuracy", "Texture Cache Accuracy",
-                                 {{"Fast", 128}, {"Middle", 512}, {"Safe", 0}});
-Option<bool> loadCustomTextures("dolphin_load_custom_textures", "Load Custom Textures", false);
-Option<bool> cacheCustomTextures("dolphin_cache_custom_textures", "Prefetch Custom Textures", false);
-Option<bool> gpuTextureDecoding("dolphin_gpu_texture_decoding", "GPU Texture Decoding", false);
-Option<bool> fastDepthCalc("dolphin_fast_depth_calculation", "Fast Depth Calculation", true);
-
-// Graphics.Enhancements
-Option<TextureFilteringMode> forceTextureFilteringMode("dolphin_force_texture_filtering_mode", "Force Texture Filtering Mode",
-                                                       {{"Disabled", TextureFilteringMode::Default},
-                                                        {"Nearest", TextureFilteringMode::Nearest},
-                                                        {"Linear", TextureFilteringMode::Linear}});
-Option<AnisotropicFilteringMode> maxAnisotropy("dolphin_max_anisotropy", "Max Anisotropy",
-                                               {{"1x", AnisotropicFilteringMode::Force1x},
-                                                {"2x", AnisotropicFilteringMode::Force2x},
-                                                {"4x", AnisotropicFilteringMode::Force4x},
-                                                {"8x", AnisotropicFilteringMode::Force8x},
-                                                {"16x", AnisotropicFilteringMode::Force16x}});
-
-// Graphics.Hacks
-Option<bool> efbAccessEnable("dolphin_efb_access_enable", "EFB Access Enable", false);
-Option<bool> efbAccessDeferInvalidation("dolphin_efb_access_defer_invalidation", "EFB Access Defer Invalidation", false);
-Option<int> efbAccessTileSize("dolphin_efb_access_tile_size", "EFB Access Tile Size", 64);
-Option<bool> bboxEnabled("dolphin_bbox_enabled", "Bounding Box Emulation", false);
-Option<bool> forceProgressive("dolphin_force_progressive", "Force Progressive", true);
-Option<bool> efbToTexture("dolphin_efb_to_texture", "Skip EFB Copy to RAM", true);
-Option<bool> xfbToTextureEnable("dolphin_xfb_to_texture_enable", "Skip XFB Copy to RAM", true);
-Option<bool> efbToVram("dolphin_efb_to_vram", "Disable EFB to VRAM", false);
-Option<bool> deferEfbCopies("dolphin_defer_efb_copies", "Defer EFB Copies to RAM", true);
-Option<bool> immediatexfb("dolphin_immediate_xfb", "Immediate XFB", false);
-Option<bool> skipDupeFrames("dolphin_skip_dupe_frames", "Skip Presenting Duplicate Frames", true);
-Option<bool> earlyXFBOutput("dolphin_early_xfb_output", "Early XFB Output", true);
-Option<bool> efbScaledCopy("dolphin_efb_scaled_copy", "Scaled EFB Copy", true);
-Option<bool> efbEmulateFormatChanges("dolphin_efb_emulate_format_changes", "EFB Emulate Format Changes", false);
-Option<bool> vertexRounding("dolphin_vertex_rounding", "Vertex Rounding", false);
-Option<bool> viSkip("dolphin_vi_skip", "VI Skip", false);
-//Option<u32> missingColorValue("dolphin_missing_color_value", "Missing Color Value", static_cast<u32>(0xFFFFFFFFu));
-Option<bool> fastTextureSampling("dolphin_fast_texture_sampling", "Fast Texture Sampling", true);
-#ifdef __APPLE__
-Option<bool> noMipmapping("dolphin_no_mipmapping", "Disable Mipmapping", false);
-#endif
-
-// Wiimote IR
-Option<int> irMode("dolphin_ir_mode", "Wiimote IR Mode", 1,
-                   {"Right Stick controls pointer (relative)", "Right Stick controls pointer (absolute)", "Mouse controls pointer"});
-Option<int> irCenter("dolphin_ir_offset", "Wiimote IR Vertical Offset",
-    {{"10", 10}, {"11", 11}, {"12", 12}, {"13", 13}, {"14", 14}, {"15", 15}, {"16", 16}, {"17", 17}, {"18", 18}, {"19", 19},
-     {"20", 20}, {"21", 21}, {"22", 22}, {"23", 23}, {"24", 24}, {"25", 25}, {"26", 26}, {"27", 27}, {"28", 28}, {"29", 29},
-     {"30", 30}, {"31", 31}, {"32", 32}, {"33", 33}, {"34", 34}, {"35", 35}, {"36", 36}, {"37", 37}, {"38", 38}, {"39", 39},
-     {"40", 40}, {"41", 41}, {"42", 42}, {"43", 43}, {"44", 44}, {"45", 45}, {"46", 46}, {"47", 47}, {"48", 48}, {"49", 49},
-     {"50", 50}, {"-50", -50}, {"-49", -49}, {"-48", -48}, {"-47", -47}, {"-46", -46}, {"-45", -45}, {"-44", -44}, {"-43", -43},
-     {"-42", -42}, {"-41", -41}, {"-40", -40}, {"-39", -39}, {"-38", -38}, {"-37", -37}, {"-36", -36}, {"-35", -35}, {"-34", -34},
-     {"-33", -33}, {"-32", -32}, {"-31", -31}, {"-30", -30}, {"-29", -29}, {"-28", -28}, {"-27", -27}, {"-26", -26}, {"-25", -25},
-     {"-24", -24}, {"-23", -23}, {"-22", -22}, {"-21", -21}, {"-20", -20}, {"-19", -19}, {"-18", -18}, {"-17", -17}, {"-16", -16},
-     {"-15", -15}, {"-14", -14}, {"-13", -13}, {"-12", -12}, {"-11", -11}, {"-10", -10}, {"-9", -9}, {"-8", -8}, {"-7", -7},
-     {"-6", -6}, {"-5", -5}, {"-4", -4}, {"-3", -3}, {"-2", -2}, {"-1", -1}, {"0", 0}, {"1", 1}, {"2", 2}, {"3", 3}, {"4", 4},
-     {"5", 5}, {"6", 6}, {"7", 7}, {"8", 8}, {"9", 9}});
-Option<int> irWidth("dolphin_ir_yaw", "Wiimote IR Total Yaw",
-    {{"15", 15}, {"16", 16}, {"17", 17}, {"18", 18}, {"19", 19}, {"20", 20}, {"21", 21}, {"22", 22}, {"23", 23}, {"24", 24},
-     {"25", 25}, {"26", 26}, {"27", 27}, {"28", 28}, {"29", 29}, {"30", 30}, {"31", 31}, {"32", 32}, {"33", 33}, {"34", 34},
-     {"35", 35}, {"36", 36}, {"37", 37}, {"38", 38}, {"39", 39}, {"40", 40}, {"41", 41}, {"42", 42}, {"43", 43}, {"44", 44},
-     {"45", 45}, {"46", 46}, {"47", 47}, {"48", 48}, {"49", 49}, {"50", 50}, {"51", 51}, {"52", 52}, {"53", 53}, {"54", 54},
-     {"55", 55}, {"56", 56}, {"57", 57}, {"58", 58}, {"59", 59}, {"60", 60}, {"61", 61}, {"62", 62}, {"63", 63}, {"64", 64},
-     {"65", 65}, {"66", 66}, {"67", 67}, {"68", 68}, {"69", 69}, {"70", 70}, {"71", 71}, {"72", 72}, {"73", 73}, {"74", 74},
-     {"75", 75}, {"76", 76}, {"77", 77}, {"78", 78}, {"79", 79}, {"80", 80}, {"81", 81}, {"82", 82}, {"83", 83}, {"84", 84},
-     {"85", 85}, {"86", 86}, {"87", 87}, {"88", 88}, {"89", 89}, {"90", 90}, {"91", 91}, {"92", 92}, {"93", 93}, {"94", 94},
-     {"95", 95}, {"96", 96}, {"97", 97}, {"98", 98}, {"99", 99}, {"100", 100}, {"0", 0}, {"1", 1}, {"2", 2}, {"3", 3},
-     {"4", 4}, {"5", 5}, {"6", 6}, {"7", 7}, {"8", 8}, {"9", 9}, {"10", 10}, {"11", 11}, {"12", 12}, {"13", 13}, {"14", 14}});
-Option<int> irHeight("dolphin_ir_pitch", "Wiimote IR Total Pitch",
-    {{"15", 15}, {"16", 16}, {"17", 17}, {"18", 18}, {"19", 19}, {"20", 20}, {"21", 21}, {"22", 22}, {"23", 23}, {"24", 24},
-     {"25", 25}, {"26", 26}, {"27", 27}, {"28", 28}, {"29", 29}, {"30", 30}, {"31", 31}, {"32", 32}, {"33", 33}, {"34", 34},
-     {"35", 35}, {"36", 36}, {"37", 37}, {"38", 38}, {"39", 39}, {"40", 40}, {"41", 41}, {"42", 42}, {"43", 43}, {"44", 44},
-     {"45", 45}, {"46", 46}, {"47", 47}, {"48", 48}, {"49", 49}, {"50", 50}, {"51", 51}, {"52", 52}, {"53", 53}, {"54", 54},
-     {"55", 55}, {"56", 56}, {"57", 57}, {"58", 58}, {"59", 59}, {"60", 60}, {"61", 61}, {"62", 62}, {"63", 63}, {"64", 64},
-     {"65", 65}, {"66", 66}, {"67", 67}, {"68", 68}, {"69", 69}, {"70", 70}, {"71", 71}, {"72", 72}, {"73", 73}, {"74", 74},
-     {"75", 75}, {"76", 76}, {"77", 77}, {"78", 78}, {"79", 79}, {"80", 80}, {"81", 81}, {"82", 82}, {"83", 83}, {"84", 84},
-     {"85", 85}, {"86", 86}, {"87", 87}, {"88", 88}, {"89", 89}, {"90", 90}, {"91", 91}, {"92", 92}, {"93", 93}, {"94", 94},
-     {"95", 95}, {"96", 96}, {"97", 97}, {"98", 98}, {"99", 99}, {"100", 100}, {"0", 0}, {"1", 1}, {"2", 2}, {"3", 3},
-     {"4", 4}, {"5", 5}, {"6", 6}, {"7", 7}, {"8", 8}, {"9", 9}, {"10", 10}, {"11", 11}, {"12", 12}, {"13", 13}, {"14", 14}});
-
-// Other
-Option<Common::Log::LogLevel> logLevel("dolphin_log_level", "Log Level", {
-                                      {"Info", Common::Log::LogLevel::LINFO},
-#if defined(_DEBUG) || defined(DEBUGFAST)
-                                      {"Debug", Common::Log::LogLevel::LDEBUG},
-#endif
-                                      {"Notice", Common::Log::LogLevel::LNOTICE},
-                                      {"Error", Common::Log::LogLevel::LERROR},
-                                      {"Warning", Common::Log::LogLevel::LWARNING}});
-Option<bool> callBackAudio("dolphin_call_back_audio", "Use async audio", false);
 }  // namespace Options
+
+inline bool GetVariable(const char* key, const char*& out_value)
+{
+  retro_variable var{ key, nullptr };
+  if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+  {
+    out_value = var.value;
+    return true;
+  }
+  return false;
+}
+
+template <>
+bool GetOption<bool>(const char* key, bool def)
+{
+  const char* val = nullptr;
+  if (GetVariable(key, val))
+  {
+    if (!strcmp(val, "enabled") || !strcmp(val, "true") || !strcmp(val, "1"))
+      return true;
+    if (!strcmp(val, "disabled") || !strcmp(val, "false") || !strcmp(val, "0"))
+      return false;
+  }
+  return def;
+}
+
+template <>
+int GetOption<int>(const char* key, int def)
+{
+  const char* val = nullptr;
+  if (GetVariable(key, val))
+  {
+    char* end = nullptr;
+    long parsed = strtol(val, &end, 10);
+    if (end != val)
+      return static_cast<int>(parsed);
+  }
+  return def;
+}
+
+template <>
+double GetOption<double>(const char* key, double def)
+{
+  const char* val = nullptr;
+  if (GetVariable(key, val))
+  {
+    char* end = nullptr;
+    double parsed = strtod(val, &end);
+    if (end != val)
+      return parsed;
+  }
+  return def;
+}
+
+template <>
+std::string GetOption<std::string>(const char* key, std::string def)
+{
+  const char* val = nullptr;
+  if (GetVariable(key, val))
+    return std::string(val);
+  return def;
+}
 }  // namespace Libretro

@@ -46,10 +46,17 @@ public:
   }
   VKTexture* GetCurrentTexture() const
   {
+    const size_t idx = static_cast<size_t>(m_current_swap_chain_image_index);
+    if (idx >= m_swap_chain_images.size() || m_swap_chain_images.empty())
+      return nullptr;
     return m_swap_chain_images[m_current_swap_chain_image_index].texture.get();
   }
   VKFramebuffer* GetCurrentFramebuffer() const
   {
+    const size_t idx   = static_cast<size_t>(m_current_swap_chain_image_index);
+    const size_t count = m_swap_chain_images.size();
+    if (count == 0 || idx >= count)
+      return nullptr;
     return m_swap_chain_images[m_current_swap_chain_image_index].framebuffer.get();
   }
   VkResult AcquireNextImage();

@@ -30,6 +30,9 @@ std::unique_ptr<VideoCommon::Presenter> g_presenter;
 
 namespace VideoCommon
 {
+#ifdef __LIBRETRO__
+bool g_is_fast_forwarding{false};
+#endif
 // Stretches the native/internal analog resolution aspect ratio from ~4:3 to ~16:9
 static float SourceAspectRatioToWidescreen(float source_aspect)
 {
@@ -875,7 +878,14 @@ void Presenter::Present(std::optional<TimePoint> presentation_time)
     if (presentation_time.has_value())
       Core::System::GetInstance().GetCoreTiming().SleepUntil(*presentation_time);
 
+#ifdef __LIBRETRO__
+    if ((!g_is_fast_forwarding) || (g_is_fast_forwarding && backbuffer_bound))
+    {
+      g_gfx->PresentBackbuffer();
+    }
+#else
     g_gfx->PresentBackbuffer();
+#endif
   }
 
   if (m_xfb_entry)

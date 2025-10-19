@@ -3,6 +3,7 @@
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
 #include "AudioCommon/AudioCommon.h"
+#include "VideoCommon/Present.h"
 #include "DolphinLibretro/Common/Globals.h"
 
 namespace Libretro
@@ -255,6 +256,29 @@ namespace FrameTiming
   bool IsEnabled()
   {
     return use_frame_time_cb;
+  }
+
+  bool IsFastForwarding()
+  {
+    return VideoCommon::g_is_fast_forwarding;
+  }
+
+  void CheckForFastForwarding()
+  {
+    if (!Libretro::environ_cb)
+      return;
+
+    bool is_fast_forwarding = false;
+
+    // Query the fast-forward state from RetroArch
+    if (Libretro::environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &is_fast_forwarding))
+    {
+      VideoCommon::g_is_fast_forwarding = is_fast_forwarding;
+      return;
+    }
+
+    // Environment call not supported
+    VideoCommon::g_is_fast_forwarding = false;
   }
 
   void ThrottleFrame()

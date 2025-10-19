@@ -128,6 +128,7 @@ void retro_reset(void)
 void retro_run(void)
 {
   Libretro::Options::CheckVariables();
+  Libretro::FrameTiming::CheckForFastForwarding();
 #if defined(_DEBUG)
   Common::Log::LogManager::GetInstance()->SetLogLevel(Common::Log::LogLevel::LDEBUG);
 #else

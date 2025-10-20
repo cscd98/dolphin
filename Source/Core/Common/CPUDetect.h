@@ -46,6 +46,29 @@ struct CPUInfo
   bool bSHA1 = false;
   bool bSHA2 = false;
 
+#if defined(_M_ARM_32)
+  // ARM specific CPUInfo - not used by ARMEmitter
+  bool bSwp = false;
+  bool bHalf = false;
+  bool bThumb = false;
+  bool bFastMult = false;
+  bool bVFP = false;
+  bool bEDSP = false;
+  bool bThumbEE = false;
+  bool bTLS = false;
+  // the following are used by ARMEmitter
+  bool bNEON = false;
+  bool bVFPv3 = false;
+  bool bVFPv4 = false;
+  bool bIDIVa = false;
+  bool bIDIVt = false;
+#if defined(__ARM_ARCH) && __ARM_ARCH >= 7
+	bool bArmV7 = true; // enable MOVT, MOVW etc
+#else
+	bool bArmV7 = false;
+#endif
+#endif
+
   // ARMv8 specific
   bool bAFP = false;  // Alternate floating-point behavior
 

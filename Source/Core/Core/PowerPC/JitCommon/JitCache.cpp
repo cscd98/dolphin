@@ -27,6 +27,32 @@
 #include <windows.h>
 #endif
 
+#ifndef JIT_DEBUG
+#define JIT_DEBUG 1
+#endif
+
+#ifdef JIT_DEBUG
+  #ifndef JIT_LOG
+  #define JIT_LOG(fmt, ...) \
+    do { \
+        printf(fmt "\n", ##__VA_ARGS__); \
+        fflush(stdout); \
+    } while (0)
+  #endif
+  #define JIT_LOG_NUM(msg, num) \
+    do { \
+        LogNumFromJIT(msg, num); \
+    } while (0)
+  #define JIT_LOG_MSG(msg) \
+    do { \
+        LogNumFromJIT(msg, 0); \
+    } while (0)
+#else
+  #define JIT_LOG(fmt, ...)       do {} while (0)
+  #define JIT_LOG_NUM(msg, num)   do {} while (0)
+  #define JIT_LOG_MSG(msg)   	    do {} while (0)
+#endif
+
 using namespace Gen;
 
 bool JitBlock::OverlapsPhysicalRange(u32 address, u32 length) const
@@ -138,6 +164,15 @@ JitBlock* JitBaseBlockCache::AllocateBlock(u32 em_address)
   b.feature_flags = m_jit.m_ppc_state.feature_flags;
   b.linkData.clear();
   b.fast_block_map_index = 0;
+
+  // Debug logging
+  JIT_LOG("AllocateBlock: em_address=0x%08x", em_address);
+  JIT_LOG("  physical_address=0x%08x", physical_address);
+  JIT_LOG("  effectiveAddress=0x%08x", b.effectiveAddress);
+  JIT_LOG("  physicalAddress=0x%08x", b.physicalAddress);
+  JIT_LOG("  feature_flags=0x%08x", b.feature_flags);
+  JIT_LOG("  fast_block_map_index=%zu", b.fast_block_map_index);
+
   return &b;
 }
 
@@ -145,6 +180,41 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
                                       const PPCAnalyst::CodeBlock& code_block,
                                       const PPCAnalyst::CodeBuffer& code_buffer)
 {
+  JIT_LOG("FinalizeBlock: address=0x%08x normalEntry=%p",
+           block.effectiveAddress, block.normalEntry);
+
+  // Ensure symbol is declared once
+  const Common::Symbol* symbol2 = nullptr;
+  if (Common::JitRegister::IsEnabled())
+    symbol2 = m_jit.m_ppc_symbol_db.GetSymbolFromAddr(block.effectiveAddress);
+
+  // compute size exactly as callers did
+  u32 size = static_cast<u32>(reinterpret_cast<uintptr_t>(block.near_end) -
+                              reinterpret_cast<uintptr_t>(block.normalEntry));
+
+  // build formatted name via snprintf (avoid fmt here)
+  char namebuf[256];
+  if (symbol2 != nullptr)
+  {
+    snprintf(namebuf, sizeof(namebuf), "JIT_PPC_%s_%08x", symbol2->function_name.c_str(),
+            static_cast<unsigned int>(block.physicalAddress));
+  }
+  else
+  {
+    snprintf(namebuf, sizeof(namebuf), "JIT_PPC_%08x",
+            static_cast<unsigned int>(block.physicalAddress));
+  }
+
+  // Print values before Register
+  JIT_LOG("Registering block:");
+  JIT_LOG("  effectiveAddress = %08x", block.effectiveAddress);
+  JIT_LOG("  normalEntry     = %p", block.normalEntry);
+  JIT_LOG("  near_end        = %p", block.near_end);
+  JIT_LOG("  size            = %u", size);
+  JIT_LOG("  symbol_name     = %s", symbol2 ? symbol2->function_name.c_str() : "(null)");
+  JIT_LOG("  physicalAddress = 0x%08x", static_cast<unsigned int>(block.physicalAddress));
+  JIT_LOG("  formatted_name  = %s", namebuf);
+
   size_t index = FastLookupIndexForAddress(block.effectiveAddress, block.feature_flags);
   if (m_entry_points_ptr)
   {
@@ -193,14 +263,42 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
   if (Common::JitRegister::IsEnabled() &&
       (symbol = m_jit.m_ppc_symbol_db.GetSymbolFromAddr(block.effectiveAddress)) != nullptr)
   {
+    // Print values before Register
+    JIT_LOG("Just before register call (1):");
+    JIT_LOG("  effectiveAddress = %08x", block.effectiveAddress);
+    JIT_LOG("  normalEntry     = %p", block.normalEntry);
+    JIT_LOG("  near_end        = %p", block.near_end);
+    JIT_LOG("  size            = %u", size);
+    JIT_LOG("  symbol_name     = %s", symbol ? symbol->function_name.c_str() : "(null)");
+    JIT_LOG("  physicalAddress = 0x%08x", static_cast<unsigned int>(block.physicalAddress));
+    JIT_LOG("  formatted_name  = %s", namebuf);
+
     Common::JitRegister::Register(block.normalEntry, block.near_end - block.normalEntry,
                                   "JIT_PPC_{}_{:08x}", symbol->function_name,
                                   block.physicalAddress);
   }
   else
   {
-    Common::JitRegister::Register(block.normalEntry, block.near_end - block.normalEntry,
-                                  "JIT_PPC_{:08x}", block.physicalAddress);
+    // Print values before Register
+    JIT_LOG("Just before register call (2):");
+    JIT_LOG("  effectiveAddress = %08x", block.effectiveAddress);
+    JIT_LOG("  normalEntry     = %p", block.normalEntry);
+    JIT_LOG("  near_end        = %p", block.near_end);
+    JIT_LOG("  size            = %u", size);
+    JIT_LOG("  symbol_name     = %s", symbol ? symbol->function_name.c_str() : "(null)");
+    JIT_LOG("  physicalAddress = 0x%08x", static_cast<unsigned int>(block.physicalAddress));
+    JIT_LOG("  formatted_name  = %s", namebuf);
+
+    char buf[64];
+snprintf(buf, sizeof(buf), "JIT_PPC_%08x",
+         static_cast<unsigned int>(block.physicalAddress));
+
+Common::JitRegister::Register(block.normalEntry,
+                              static_cast<u32>(block.near_end - block.normalEntry),
+                              std::string(buf));
+
+    //Common::JitRegister::Register(block.normalEntry, block.near_end - block.normalEntry,
+    //                              "JIT_PPC_{:08x}", block.physicalAddress);
   }
 }
 
@@ -275,6 +373,8 @@ void JitBaseBlockCache::InvalidateICacheLine(u32 address)
 
 void JitBaseBlockCache::InvalidateICache(u32 initial_address, u32 initial_length, bool forced)
 {
+  JIT_LOG("InvalidateICache: addr %d, length %d, forced = %d", initial_address, initial_length, forced);
+
   u32 address = initial_address;
   u32 length = initial_length;
   while (length > 0)

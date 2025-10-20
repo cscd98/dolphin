@@ -118,9 +118,11 @@ void CEXIChannel::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
                          m_imm_data = device->ImmRead(m_control.TLEN + 1);
                          break;
                        case EXI_WRITE:
+                        if (device)
                          device->ImmWrite(m_imm_data, m_control.TLEN + 1);
                          break;
                        case EXI_READWRITE:
+                       if (device)
                          device->ImmReadWrite(m_imm_data, m_control.TLEN + 1);
                          break;
                        default:
@@ -134,9 +136,11 @@ void CEXIChannel::RegisterMMIO(MMIO::Mapping* mmio, u32 base)
                        switch (m_control.RW)
                        {
                        case EXI_READ:
+                        if (device)
                          device->DMARead(m_dma_memory_address, m_dma_length);
                          break;
                        case EXI_WRITE:
+                        if (device)
                          device->DMAWrite(m_dma_memory_address, m_dma_length);
                          break;
                        default:

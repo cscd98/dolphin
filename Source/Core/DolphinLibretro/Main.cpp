@@ -49,6 +49,7 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/Widescreen.h"
 #include "Core/Boot/Boot.h"
+#include "Core/PowerPC/JitArm32/Jit.h"
 
 #ifdef PERF_TEST
 static struct retro_perf_callback perf_cb;
@@ -174,8 +175,31 @@ void retro_reset(void)
   Core::System::GetInstance().GetProcessorInterface().ResetButton_Tap();
 }
 
+void PrintJitLogs()
+{
+#ifdef _M_ARM_32
+  while (g_jit_log_read_idx != g_jit_log_write_idx)
+  {
+    const auto& entry = g_jit_log_buffer[g_jit_log_read_idx];
+    printf("%s 0x%08x\n", entry.msg, entry.value);
+    g_jit_log_read_idx = (g_jit_log_read_idx + 1) & 0xFF;
+  }
+  fflush(stdout);
+#endif
+}
+
 void retro_run(void)
 {
+#ifdef _M_ARM_32
+  static bool first = true;
+  if (first) {
+    printf("retro_run: write_idx=%u read_idx=%u\n",
+           g_jit_log_write_idx.load(), g_jit_log_read_idx.load());
+    first = false;
+  }
+
+  PrintJitLogs();
+#endif
   Libretro::Input::InitSensors();
   Libretro::Options::CheckForUpdatedVariables();
   Libretro::FrameTiming::CheckForFastForwarding();

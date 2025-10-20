@@ -398,6 +398,8 @@ protected:
 
   JitArm64BlockCache blocks{*this};
 
+  const u8* m_increment_profile_counter;
+
   Arm64Gen::ARM64FloatEmitter m_float_emit;
 
   // Because B instructions can't jump farther than +/- 128 MiB, code memory is allocated like this:

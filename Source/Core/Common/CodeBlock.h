@@ -10,6 +10,22 @@
 #include "Common/CommonTypes.h"
 #include "Common/MemoryUtil.h"
 
+#ifndef JIT_DEBUG
+#define JIT_DEBUG 1
+#endif
+
+#ifdef JIT_DEBUG
+  #ifndef JIT_LOG
+  #define JIT_LOG(fmt, ...) \
+    do { \
+        printf(fmt "\n", ##__VA_ARGS__); \
+        fflush(stdout); \
+    } while (0)
+  #endif
+#else
+  #define JIT_LOG(fmt, ...)       do {} while (0)
+#endif
+
 namespace Common
 {
 // Everything that needs to generate code should inherit from this.
@@ -51,6 +67,9 @@ public:
   // Call this before you generate any code.
   void AllocCodeSpace(size_t size)
   {
+    JIT_LOG("Allocating %zu bytes of %s code space", size,
+           executable ? "executable" : "non-executable");
+
     region_size = size;
     total_region_size = size;
     if constexpr (executable)

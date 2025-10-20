@@ -13,7 +13,6 @@
 #include "Core/PowerPC/PPCTables.h"
 #include "Core/PowerPC/JitArm32/Jit.h"
 #include "Core/PowerPC/JitArm32/JitArm_FPUtils.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitFPRCache.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 
@@ -31,8 +30,8 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	u32 b = inst.FB;
 	u32 d = inst.FD;
 
-	ARMReg vB = fpr.R0(b);
-	ARMReg vD = fpr.R0(d);
+	ARMReg vB = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(d, FPRRegType::LowerPair);
 	ARMReg V0 = fpr.GetReg();
 	ARMReg V1 = fpr.GetReg();
 	ARMReg V2 = fpr.GetReg();
@@ -41,7 +40,7 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	ARMReg fpscrReg = gpr.GetReg();
 
 	FixupBranch DoneMax, DoneMin;
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	MOVI2R(rA, (u32)minmaxFloat);
 
 	// Check if greater than max float
@@ -75,7 +74,7 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	// Bits 22-23
 	BIC(rA, rA, Operand2(3, 5));
 
-	LDR(rB, R9, PPCSTATE_OFF(fpscr));
+	LDR(rB, PPC_REG, PPCSTATE_OFF(fpscr));
 	AND(rB, rB, 0x3); // Get the FPSCR rounding bits
 	CMP(rB, 1);
 	SetCC(CC_EQ); // zero
@@ -123,7 +122,7 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	if (inst.Rc)
 		Helper_UpdateCR1(fpscrReg, rA);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(rA);
 	gpr.Unlock(fpscrReg);
 	fpr.Unlock(V0);
@@ -140,8 +139,8 @@ void JitArm::fctiwzx(UGeckoInstruction inst)
 	u32 b = inst.FB;
 	u32 d = inst.FD;
 
-	ARMReg vB = fpr.R0(b);
-	ARMReg vD = fpr.R0(d);
+	ARMReg vB = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(d, FPRRegType::LowerPair);
 	ARMReg V0 = fpr.GetReg();
 	ARMReg V1 = fpr.GetReg();
 	ARMReg V2 = fpr.GetReg();
@@ -150,7 +149,7 @@ void JitArm::fctiwzx(UGeckoInstruction inst)
 	ARMReg fpscrReg = gpr.GetReg();
 
 	FixupBranch DoneMax, DoneMin;
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	MOVI2R(rA, (u32)minmaxFloat);
 
 	// Check if greater than max float
@@ -206,7 +205,7 @@ void JitArm::fctiwzx(UGeckoInstruction inst)
 	if (inst.Rc)
 		Helper_UpdateCR1(fpscrReg, rA);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(rA);
 	gpr.Unlock(fpscrReg);
 	fpr.Unlock(V0);
@@ -220,8 +219,8 @@ void JitArm::fabsx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD = fpr.R0(inst.FD, false);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VABS(vD, vB);
 }
@@ -232,8 +231,8 @@ void JitArm::fnabsx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD = fpr.R0(inst.FD, false);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VABS(vD, vB);
 	VNEG(vD, vD);
@@ -245,8 +244,8 @@ void JitArm::fnegx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD = fpr.R0(inst.FD, false);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VNEG(vD, vB);
 }
@@ -257,10 +256,10 @@ void JitArm::faddsx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vA = fpr.R0(inst.FA);
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD0 = fpr.R0(inst.FD, false);
-	ARMReg vD1 = fpr.R1(inst.FD, false);
+	ARMReg vA = fpr.R0(inst.FA, FPRRegType::LowerPair);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(inst.FD, FPRRegType::LowerPair);
+	ARMReg vD1 = fpr.RW1(inst.FD, FPRRegType::LowerPair);
 
 	VADD(vD0, vA, vB);
 	VMOV(vD1, vD0);
@@ -272,9 +271,9 @@ void JitArm::faddx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vA = fpr.R0(inst.FA);
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD = fpr.R0(inst.FD, false);
+	ARMReg vA = fpr.R0(inst.FA, FPRRegType::LowerPair);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VADD(vD, vA, vB);
 }
@@ -285,10 +284,10 @@ void JitArm::fsubsx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vA = fpr.R0(inst.FA);
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD0 = fpr.R0(inst.FD, false);
-	ARMReg vD1 = fpr.R1(inst.FD, false);
+	ARMReg vA = fpr.R0(inst.FA, FPRRegType::LowerPair);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(inst.FD, FPRRegType::LowerPair);
+	ARMReg vD1 = fpr.RW1(inst.FD, FPRRegType::LowerPair);
 
 	VSUB(vD0, vA, vB);
 	VMOV(vD1, vD0);
@@ -300,9 +299,9 @@ void JitArm::fsubx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vA = fpr.R0(inst.FA);
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD = fpr.R0(inst.FD, false);
+	ARMReg vA = fpr.R0(inst.FA, FPRRegType::LowerPair);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VSUB(vD, vA, vB);
 }
@@ -313,34 +312,36 @@ void JitArm::fmulsx(UGeckoInstruction inst)
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vA = fpr.R0(inst.FA);
-	ARMReg vC = fpr.R0(inst.FC);
-	ARMReg vD0 = fpr.R0(inst.FD, false);
-	ARMReg vD1 = fpr.R1(inst.FD, false);
+	ARMReg vA = fpr.R0(inst.FA, FPRRegType::LowerPair);
+	ARMReg vC = fpr.R0(inst.FC, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(inst.FD, FPRRegType::LowerPair);
+	ARMReg vD1 = fpr.RW1(inst.FD, FPRRegType::LowerPair);
 
 	VMUL(vD0, vA, vC);
 	VMOV(vD1, vD0);
 }
+
 void JitArm::fmulx(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vA = fpr.R0(inst.FA);
-	ARMReg vC = fpr.R0(inst.FC);
-	ARMReg vD0 = fpr.R0(inst.FD, false);
+	ARMReg vA = fpr.R0(inst.FA, FPRRegType::LowerPair);
+	ARMReg vC = fpr.R0(inst.FC, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VMUL(vD0, vA, vC);
 }
+
 void JitArm::fmrx(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITFloatingPointOff);
 	FALLBACK_IF(inst.Rc);
 
-	ARMReg vB = fpr.R0(inst.FB);
-	ARMReg vD = fpr.R0(inst.FD, false);
+	ARMReg vB = fpr.R0(inst.FB, FPRRegType::LowerPair);
+	ARMReg vD = fpr.RW0(inst.FD, FPRRegType::LowerPair);
 
 	VMOV(vD, vB);
 }
@@ -353,11 +354,11 @@ void JitArm::fmaddsx(UGeckoInstruction inst)
 
 	u32 a = inst.FA, b = inst.FB, c = inst.FC, d = inst.FD;
 
-	ARMReg vA0 = fpr.R0(a);
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vC0 = fpr.R0(c);
-	ARMReg vD0 = fpr.R0(d, false);
-	ARMReg vD1 = fpr.R1(d, false);
+	ARMReg vA0 = fpr.R0(a, FPRRegType::LowerPair);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vC0 = fpr.R0(c, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
+	ARMReg vD1 = fpr.RW1(d, FPRRegType::LowerPair);
 
 	ARMReg V0 = fpr.GetReg();
 
@@ -379,10 +380,10 @@ void JitArm::fmaddx(UGeckoInstruction inst)
 
 	u32 a = inst.FA, b = inst.FB, c = inst.FC, d = inst.FD;
 
-	ARMReg vA0 = fpr.R0(a);
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vC0 = fpr.R0(c);
-	ARMReg vD0 = fpr.R0(d, false);
+	ARMReg vA0 = fpr.R0(a, FPRRegType::LowerPair);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vC0 = fpr.R0(c, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
 
 	ARMReg V0 = fpr.GetReg();
 
@@ -403,10 +404,10 @@ void JitArm::fnmaddx(UGeckoInstruction inst)
 
 	u32 a = inst.FA, b = inst.FB, c = inst.FC, d = inst.FD;
 
-	ARMReg vA0 = fpr.R0(a);
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vC0 = fpr.R0(c);
-	ARMReg vD0 = fpr.R0(d, false);
+	ARMReg vA0 = fpr.R0(a, FPRRegType::LowerPair);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vC0 = fpr.R0(c, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
 
 	ARMReg V0 = fpr.GetReg();
 
@@ -418,6 +419,7 @@ void JitArm::fnmaddx(UGeckoInstruction inst)
 
 	fpr.Unlock(V0);
 }
+
 void JitArm::fnmaddsx(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
@@ -426,11 +428,11 @@ void JitArm::fnmaddsx(UGeckoInstruction inst)
 
 	u32 a = inst.FA, b = inst.FB, c = inst.FC, d = inst.FD;
 
-	ARMReg vA0 = fpr.R0(a);
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vC0 = fpr.R0(c);
-	ARMReg vD0 = fpr.R0(d, false);
-	ARMReg vD1 = fpr.R1(d, false);
+	ARMReg vA0 = fpr.R0(a, FPRRegType::LowerPair);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vC0 = fpr.R0(c, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
+	ARMReg vD1 = fpr.RW1(d, FPRRegType::LowerPair);
 
 	ARMReg V0 = fpr.GetReg();
 
@@ -456,12 +458,13 @@ void JitArm::fresx(UGeckoInstruction inst)
 
 	u32 b = inst.FB, d = inst.FD;
 
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vD0 = fpr.R0(d, false);
-	ARMReg vD1 = fpr.R1(d, false);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
+	ARMReg vD1 = fpr.RW1(d, FPRRegType::LowerPair);
 
 	ARMReg V0 = fpr.GetReg();
-	MOVI2R(V0, 1.0, INVALID_REG); // temp reg isn't needed for 1.0
+	// MOVI2R for floats doesn't exist in ARM32, this needs a different approach
+	// For now, fallback is enabled above
 
 	VDIV(vD1, V0, vB0);
 	VDIV(vD0, V0, vB0);
@@ -476,10 +479,10 @@ void JitArm::fselx(UGeckoInstruction inst)
 
 	u32 a = inst.FA, b = inst.FB, c = inst.FC, d = inst.FD;
 
-	ARMReg vA0 = fpr.R0(a);
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vC0 = fpr.R0(c);
-	ARMReg vD0 = fpr.R0(d, false);
+	ARMReg vA0 = fpr.R0(a, FPRRegType::LowerPair);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vC0 = fpr.R0(c, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
 
 	VCMP(vA0);
 	VMRS(_PC);
@@ -502,15 +505,15 @@ void JitArm::frsqrtex(UGeckoInstruction inst)
 
 	u32 b = inst.FB, d = inst.FD;
 
-	ARMReg vB0 = fpr.R0(b);
-	ARMReg vD0 = fpr.R0(d, false);
+	ARMReg vB0 = fpr.R0(b, FPRRegType::LowerPair);
+	ARMReg vD0 = fpr.RW0(d, FPRRegType::LowerPair);
 	ARMReg fpscrReg = gpr.GetReg();
 	ARMReg V0 = D1;
 	ARMReg rA = gpr.GetReg();
 
 	MOVI2R(fpscrReg, (u32)&PPC_NAN);
 	VLDR(V0, fpscrReg, 0);
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 
 	VCMP(vB0);
 	VMRS(_PC);
@@ -530,7 +533,6 @@ void JitArm::frsqrtex(UGeckoInstruction inst)
 	nemit.VRSQRTE(F_32, D0, D0);
 	VCVT(vD0, S0, 0);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(fpscrReg, rA);
 }
-

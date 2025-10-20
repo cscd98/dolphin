@@ -91,6 +91,22 @@
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoEvents.h"
 
+#ifndef JIT_DEBUG
+#define JIT_DEBUG 0
+#endif
+
+#ifdef JIT_DEBUG
+  #ifndef JIT_LOG
+  #define JIT_LOG(fmt, ...) \
+    do { \
+        printf(fmt "\n", ##__VA_ARGS__); \
+        fflush(stdout); \
+    } while (0)
+  #endif
+#else
+  #define JIT_LOG(fmt, ...)       do {} while (0)
+#endif
+
 namespace Core
 {
 static bool s_wants_determinism;
@@ -416,6 +432,7 @@ static void CpuThread(Core::System& system, const std::optional<std::string> sav
     return;
 #endif
   // Enter CPU run loop. When we leave it - we are done.
+  JIT_LOG("CPU thread starting Run loop");
   system.GetCPU().Run();
 
 #ifdef USE_MEMORYWATCHER

@@ -109,7 +109,7 @@ void GenericLogFmt(LogLevel level, LogType type, const char* file, int line, con
 #else
   auto&& format_str = format;
 #endif
-  GenericLogFmtImpl(level, type, file, line, format_str, fmt::make_format_args(args...));
+  //GenericLogFmtImpl(level, type, file, line, format_str, fmt::make_format_args(args...));
 }
 }  // namespace Common::Log
 

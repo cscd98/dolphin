@@ -36,7 +36,8 @@ public:
 	~ArmFPRCache() {}
 
 	void Init(ArmGen::ARMXEmitter *emitter);
-	void Start(PPCAnalyst::BlockRegStats &stats);
+	virtual void Start(PPCAnalyst::BlockRegStats& stats) {}
+	void ResetRegisters(BitSet32 regs_to_reset);
 
 	void SetEmitter(ArmGen::ARMXEmitter *emitter) {emit = emitter;}
 

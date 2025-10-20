@@ -13,7 +13,6 @@
 #include "Core/PowerPC/PPCTables.h"
 #include "Core/PowerPC/JitArm32/Jit.h"
 #include "Core/PowerPC/JitArm32/JitArm_FPUtils.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitFPRCache.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 
@@ -41,7 +40,7 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	ARMReg fpscrReg = gpr.GetReg();
 
 	FixupBranch DoneMax, DoneMin;
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	MOVI2R(rA, (u32)minmaxFloat);
 
 	// Check if greater than max float
@@ -75,7 +74,7 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	// Bits 22-23
 	BIC(rA, rA, Operand2(3, 5));
 
-	LDR(rB, R9, PPCSTATE_OFF(fpscr));
+	LDR(rB, PPC_REG, PPCSTATE_OFF(fpscr));
 	AND(rB, rB, 0x3); // Get the FPSCR rounding bits
 	CMP(rB, 1);
 	SetCC(CC_EQ); // zero
@@ -123,7 +122,7 @@ void JitArm::fctiwx(UGeckoInstruction inst)
 	if (inst.Rc)
 		Helper_UpdateCR1(fpscrReg, rA);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(rA);
 	gpr.Unlock(fpscrReg);
 	fpr.Unlock(V0);
@@ -150,7 +149,7 @@ void JitArm::fctiwzx(UGeckoInstruction inst)
 	ARMReg fpscrReg = gpr.GetReg();
 
 	FixupBranch DoneMax, DoneMin;
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	MOVI2R(rA, (u32)minmaxFloat);
 
 	// Check if greater than max float
@@ -206,7 +205,7 @@ void JitArm::fctiwzx(UGeckoInstruction inst)
 	if (inst.Rc)
 		Helper_UpdateCR1(fpscrReg, rA);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(rA);
 	gpr.Unlock(fpscrReg);
 	fpr.Unlock(V0);
@@ -510,7 +509,7 @@ void JitArm::frsqrtex(UGeckoInstruction inst)
 
 	MOVI2R(fpscrReg, (u32)&PPC_NAN);
 	VLDR(V0, fpscrReg, 0);
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 
 	VCMP(vB0);
 	VMRS(_PC);
@@ -530,7 +529,7 @@ void JitArm::frsqrtex(UGeckoInstruction inst)
 	nemit.VRSQRTE(F_32, D0, D0);
 	VCVT(vD0, S0, 0);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(fpscrReg, rA);
 }
 

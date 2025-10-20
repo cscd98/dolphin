@@ -12,7 +12,6 @@
 
 #include "Core/PowerPC/JitArm32/Jit.h"
 #include "Core/PowerPC/JitArm32/JitArm_FPUtils.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 
 using namespace ArmGen;
@@ -37,7 +36,7 @@ void JitArm::ps_rsqrte(UGeckoInstruction inst)
 
 	MOVI2R(fpscrReg, (u32)&PPC_NAN);
 	VLDR(V0, fpscrReg, 0);
-	LDR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	LDR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 
 	VCMP(vB0);
 	VMRS(_PC);
@@ -76,7 +75,7 @@ void JitArm::ps_rsqrte(UGeckoInstruction inst)
 	VCVT(vD0, S0, 0);
 	VCVT(vD1, S1, 0);
 
-	STR(fpscrReg, R9, PPCSTATE_OFF(fpscr));
+	STR(fpscrReg, PPC_REG, PPCSTATE_OFF(fpscr));
 	gpr.Unlock(fpscrReg, rA);
 }
 

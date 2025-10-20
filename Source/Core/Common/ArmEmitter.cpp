@@ -1358,6 +1358,51 @@ void ARMXEmitter::VCVT(ARMReg Dest, ARMReg Source, int flags)
 	}
 }
 
+void ARMXEmitter::ParallelMoves(RegisterMove* begin, RegisterMove* end,
+	std::array<u8, 16>* source_gpr_usages)
+{
+	// r0–r3 are used for argument passing.
+	// r12 (IP) is a scratch register we can use to break cycles.
+	constexpr size_t temp_reg = 12;
+
+	while (begin != end)
+	{
+		bool removed_moves = false;
+
+		RegisterMove* current = end;
+		while (current != begin)
+		{
+			RegisterMove* prev = current;
+			--current;
+			if ((*source_gpr_usages)[DecodeReg(current->dst)] == 0)
+			{
+				MOV(current->dst, current->src);
+				(*source_gpr_usages)[DecodeReg(current->src)]--;
+				std::move(prev, end, current);
+				--end;
+				removed_moves = true;
+			}
+		}
+
+		if (!removed_moves)
+		{
+			// Break a cycle using r12 (IP).
+			const ARMReg src = begin->src;
+			const ARMReg dst = static_cast<ARMReg>(temp_reg);
+
+			MOV(dst, src);
+			(*source_gpr_usages)[DecodeReg(dst)] = (*source_gpr_usages)[DecodeReg(src)];
+			(*source_gpr_usages)[DecodeReg(src)] = 0;
+
+			std::for_each(begin, end, [src, dst](RegisterMove& move) {
+			if (move.src == src)
+			move.src = dst;
+			});
+		}
+	}
+}
+
+
 void NEONXEmitter::VABA(u32 Size, ARMReg Vd, ARMReg Vn, ARMReg Vm)
 {
 	ASSERT_MSG(DYNA_REC, Vd >= D0, "Pass invalid register to {}", __FUNCTION__);

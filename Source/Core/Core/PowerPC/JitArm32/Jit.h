@@ -80,9 +80,6 @@ private:
 
 	ArmGen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set);
 
-	void BeginTimeProfile(JitBlock* b);
-	void EndTimeProfile(JitBlock* b);
-
 	bool BackPatch(SContext* ctx);
 	bool DisasmLoadStore(const u8* ptr, u32* flags, ArmGen::ARMReg* rD, ArmGen::ARMReg* V1);
 	// Initializes the information that backpatching needs

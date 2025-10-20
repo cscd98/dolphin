@@ -14,6 +14,7 @@
 #include "Common/BitSet.h"
 #include "Common/CodeBlock.h"
 #include "Common/Common.h"
+#include "Common/SmallVector.h"
 
 #if defined(__SYMBIAN32__) || defined(PANDORA)
 #include <signal.h>
@@ -322,6 +323,7 @@ const u32 I_POLYNOMIAL = (1 << 7); // Only used in VMUL/VMULL
 u32 EncodeVd(ARMReg Vd);
 u32 EncodeVn(ARMReg Vn);
 u32 EncodeVm(ARMReg Vm);
+
 // Subtracts the base from the register to give us the real one
 ARMReg SubBase(ARMReg Reg);
 
@@ -329,6 +331,13 @@ class ARMXEmitter
 {
 	friend struct OpArg;  // for Write8 etc
 	friend class NEONXEmitter;
+
+	struct RegisterMove
+  {
+    ARMReg dst;
+    ARMReg src;
+  };
+
 private:
 	// Pointer to memory where code will be emitted to.
 	u8* m_code = nullptr;
@@ -360,6 +369,15 @@ private:
 
 	// New Ops
 	void WriteInstruction(u32 op, ARMReg Rd, ARMReg Rn, Operand2 Rm, bool SetFlags = false);
+
+	// This function solves the "parallel moves" problem common in compilers.
+  // The arguments are mutated!
+	void ParallelMoves(RegisterMove* begin, RegisterMove* end, std::array<u8, 16>* source_gpr_usages);
+
+	constexpr int DecodeReg(ARMReg reg)
+	{
+		return static_cast<int>(reg) & 0x0F;
+	}
 
 protected:
 	inline void Write32(u32 value) {*(u32*)m_code = value; m_code+=4;}
@@ -573,7 +591,110 @@ public:
 	void CMPI2R(ARMReg rs, u32 val, ARMReg scratch);
 	void ORI2R(ARMReg rd, ARMReg rs, u32 val, ARMReg scratch);
 
+	template <typename T>
+	void QuickCallFunction(ARMReg scratchreg, T func)
+	{
+		QuickCallFunction(scratchreg, (const void*)func);
+	}
 
+	template <typename FuncRet, typename... FuncArgs, typename... Args>
+	void ABI_CallFunction(FuncRet (*func)(FuncArgs...), Args... args)
+	{
+		static_assert(sizeof...(FuncArgs) == sizeof...(Args), "Wrong number of arguments");
+		static_assert(sizeof...(FuncArgs) <= 4, "Passing arguments on the stack is not supported");
+
+		if constexpr (!std::is_void_v<FuncRet>)
+			static_assert(sizeof(FuncRet) <= 8, "Large return types are not supported");
+
+		std::array<u8, 16> source_gpr_uses{};
+
+		auto check_argument = [&](auto& arg) {
+			using Arg = std::decay_t<decltype(arg)>;
+
+			if constexpr (std::is_same_v<Arg, ARMReg>)
+			{
+				ASSERT_MSG(DYNA_REC, arg >= R0 && arg <= R15, "Invalid ARM register");
+				source_gpr_uses[arg]++;
+			}
+			else
+			{
+				static_assert(!std::is_floating_point_v<Arg>, "Floating-point arguments are not supported");
+				static_assert(sizeof(Arg) <= 4, "Arguments bigger than a register are not supported");
+			}
+		};
+
+		(check_argument(args), ...);
+
+		{
+			Common::SmallVector<RegisterMove, sizeof...(Args)> pending_moves;
+
+			size_t i = 0;
+
+			auto handle_register_argument = [&](auto& arg) {
+				using Arg = std::decay_t<decltype(arg)>;
+
+				if constexpr (std::is_same_v<Arg, ARMReg>)
+				{
+					// ARM calling convention: R0-R3 for first 4 arguments
+					const ARMReg dst_reg = static_cast<ARMReg>(R0 + i);
+
+					if (dst_reg == arg)
+					{
+						// The value is already in the right register.
+						source_gpr_uses[arg]--;
+					}
+					else if (source_gpr_uses[R0 + i] == 0)
+					{
+						// The destination register isn't used as the source of another move.
+						// We can go ahead and do the move right away.
+						MOV(dst_reg, arg);
+						source_gpr_uses[arg]--;
+					}
+					else
+					{
+						// The destination register is used as the source of a move we haven't gotten to yet.
+						// Let's record that we need to deal with this move later.
+						pending_moves.emplace_back(dst_reg, arg);
+					}
+				}
+
+				++i;
+			};
+
+			(handle_register_argument(args), ...);
+
+			if (!pending_moves.empty())
+			{
+				ParallelMoves(pending_moves.data(), pending_moves.data() + pending_moves.size(),
+											&source_gpr_uses);
+			}
+		}
+
+		{
+			size_t i = 0;
+
+			auto handle_immediate_argument = [&](auto& arg) {
+				using Arg = std::decay_t<decltype(arg)>;
+
+				if constexpr (!std::is_same_v<Arg, ARMReg>)
+				{
+					// ARM calling convention: R0-R3 for first 4 arguments
+					const ARMReg dst_reg = static_cast<ARMReg>(R0 + i);
+
+					if constexpr (std::is_pointer_v<Arg>)
+						MOVI2R(dst_reg, (u32)arg);
+					else
+						MOVI2R(dst_reg, (u32)arg);
+				}
+
+				++i;
+			};
+
+			(handle_immediate_argument(args), ...);
+		}
+
+		QuickCallFunction(R14, func);
+	}
 };  // class ARMXEmitter
 
 enum NEONAlignment

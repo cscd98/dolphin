@@ -168,8 +168,12 @@ void JitArm::WriteExitDestInR(ARMReg Reg)
 {
 	STR(Reg, R9, PPCSTATE_OFF(pc));
 	Cleanup();
+	if (IsProfilingEnabled())
+  {
+    ABI_CallFunction(&JitBlock::ProfileData::EndProfiling, js.curBlock->profile_data.get(),
+                     js.downcountAmount);
+  }
 	DoDownCount();
-	EndTimeProfile(js.curBlock);
 
 	MOVI2R(Reg, (u32)asm_routines.dispatcher);
 	B(Reg);
@@ -179,8 +183,12 @@ void JitArm::WriteRfiExitDestInR(ARMReg Reg)
 {
 	STR(Reg, R9, PPCSTATE_OFF(pc));
 	Cleanup();
+	if (IsProfilingEnabled())
+  {
+    ABI_CallFunction(&JitBlock::ProfileData::EndProfiling, js.curBlock->profile_data.get(),
+                     js.downcountAmount);
+  }
 	DoDownCount();
-	EndTimeProfile(js.curBlock);
 
 	ARMReg A = gpr.GetReg(false);
 
@@ -197,8 +205,12 @@ void JitArm::WriteRfiExitDestInR(ARMReg Reg)
 void JitArm::WriteExceptionExit()
 {
 	Cleanup();
+	if (IsProfilingEnabled())
+  {
+    ABI_CallFunction(&JitBlock::ProfileData::EndProfiling, js.curBlock->profile_data.get(),
+                     js.downcountAmount);
+  }
 	DoDownCount();
-	EndTimeProfile(js.curBlock);
 
 	ARMReg A = gpr.GetReg(false);
 
@@ -215,10 +227,11 @@ void JitArm::WriteExceptionExit()
 void JitArm::WriteExit(u32 destination)
 {
   Cleanup();
-  DoDownCount();
-
-  if (jo.profile_blocks)
-    EndTimeProfile(js.curBlock);
+  if (IsProfilingEnabled())
+		ABI_CallFunction(&JitBlock::ProfileData::EndProfiling,
+			js.curBlock->profile_data.get(),
+			js.downcountAmount);
+	DoDownCount();
 
   JitBlock* b = js.curBlock;
 
@@ -292,14 +305,14 @@ void JitArm::Jit(u32 em_address)
     m_ppc_state.npc = nextPC;
 		m_ppc_state.Exceptions |= EXCEPTION_ISI;
     m_system.GetPowerPC().CheckExceptions();
-		// WEBOS TODO: update membase?
+		m_system.GetJitInterface().UpdateMembase();
     WARN_LOG_FMT(POWERPC, "ISI exception at 0x{:08x}", nextPC);
     return;
   }
 
 	JitBlock* b = blocks.AllocateBlock(em_address);
 	const u8* BlockPtr = DoJit(m_ppc_state.pc, &code_buffer, b);
-	blocks.FinalizeBlock(*b, jo.enableBlocklink, code_block, m_code_buffer);
+	blocks.FinalizeBlock(*b, jo.enableBlocklink, code_block, m_code_buffer); // TODO WEBOS??
 }
 
 void JitArm::Break(UGeckoInstruction inst)
@@ -308,81 +321,28 @@ void JitArm::Break(UGeckoInstruction inst)
 	BKPT(0x4444);
 }
 
-void JitArm::BeginTimeProfile(JitBlock* b)
-{
-	b->profile_data.ticCounter = 0;
-	b->profile_data.ticStart = 0;
-	b->profile_data.ticStop = 0;
-
-	// Performance counters are bit finnicky on ARM
-	// We must first enable and program the PMU before using it
-	// This is a per core operation so with thread scheduling we may jump to a core we haven't enabled PMU yet
-	// Work around this by enabling PMU each time at the start of a block
-	// Some ARM CPUs are getting absurd core counts(48+!)
-	// We have to reset counters at the start of every block anyway, so may as well.
-	// One thing to note about performance counters on ARM
-	// The kernel can block access to these co-processor registers
-	// In the case that this happens, these will generate a SIGILL
-
-	// Refer to the ARM ARM about PMCR for what these do exactly
-	enum
-	{
-		PERF_OPTION_ENABLE = (1 << 0),
-		PERF_OPTION_RESET_CR = (1 << 1),
-		PERF_OPTION_RESET_CCR = (1 << 2),
-		PERF_OPTION_DIVIDER_MODE = (1 << 3),
-		PERF_OPTION_EXPORT_ENABLE = (1 << 4),
-	};
-	const u32 perf_options =
-		PERF_OPTION_ENABLE |
-		PERF_OPTION_RESET_CR |
-		PERF_OPTION_RESET_CCR |
-		PERF_OPTION_EXPORT_ENABLE;
-	MOVI2R(R0, perf_options);
-	// Programs the PMCR
-	MCR(15, 0, R0, 9, 12, 0);
-
-	MOVI2R(R0, 0x8000000F);
-	// Enables all counters
-	MCR(15, 0, R0, 9, 12, 1);
-	// Clears all counter overflows
-	MCR(15, 0, R0, 9, 12, 3);
-
-	// Gets the cycle counter
-	MRC(15, 0, R1, 9, 13, 0);
-	MOVI2R(R0, (u32)&b->profile_data.ticStart);
-	STR(R1, R0, 0);
-}
-
-void JitArm::EndTimeProfile(JitBlock* b)
-{
-	if (!jo.profile_blocks)
-    return;
-
-	// Gets the cycle counter
-	MRC(15, 0, R1, 9, 13, 0);
-	MOVI2R(R0, (u32)&b->profile_data.ticStop);
-	STR(R1, R0, 0);
-
-	MOVI2R(R0, (u32)&b->profile_data.ticStart);
-	MOVI2R(R14, (u32)asm_routines.m_increment_profile_counter);
-	BL(R14);
-}
-
 const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlock *b)
 {
 	int blockSize = code_buf->size();
 
 	if (IsDebuggingEnabled())
 	{
-		// Comment out the following to disable breakpoints (speed-up)
-		blockSize = 1;
+		if (!IsProfilingEnabled())
+    {
+      if (cpu.IsStepping())
+			{
+				// Comment out the following to disable breakpoints (speed-up)
+				blockSize = 1;
+			}
+			Trace();
+		}
 	}
 
 	if (em_address == 0)
 	{
 		Core::SetState(Core::System::GetInstance(), Core::State::Paused);
-		PanicAlertFmt("ERROR: Compiling at 0. LR={:08x} CTR={:08x}", LR, CTR);
+		PanicAlertFmt("ERROR: Compiling at 0. LR={:08x} CTR={:08x}",
+			m_ppc_state.spr[SPR_LR], m_ppc_state.spr[SPR_CTR]);
 	}
 
 	js.isLastInstruction = false;
@@ -442,18 +402,10 @@ const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlo
 		gpr.Unlock(A, C);
 	}
 
-	// Conditionally add profiling code.
-	if (jo.profile_blocks)
-	{
-		ARMReg rA = gpr.GetReg();
-		ARMReg rB = gpr.GetReg();
-		MOVI2R(rA, (u32)&b->profile_data.runCount); // Load in to register
-		LDR(rB, rA); // Load the actual value in to R11.
-		ADD(rB, rB, 1); // Add one to the value
-		STR(rB, rA); // Now store it back in the memory location
-		BeginTimeProfile(b);
-		gpr.Unlock(rA, rB);
-	}
+  // Conditionally add profiling code.
+  if (IsProfilingEnabled())
+    ABI_CallFunction(&JitBlock::ProfileData::BeginProfiling, b->profile_data.get());
+
 	gpr.Start(js.gpa);
 	fpr.Start(js.fpa);
 	js.downcountAmount = 0;
@@ -473,7 +425,7 @@ const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlo
 		js.op = &op;
 		js.instructionNumber = i;
 		const GekkoOPInfo *opinfo = op.opinfo;
-		js.downcountAmount += opinfo->numCycles;
+		js.downcountAmount += opinfo->num_cycles;
 
 		if (i == (code_block.m_num_instructions - 1))
 		{

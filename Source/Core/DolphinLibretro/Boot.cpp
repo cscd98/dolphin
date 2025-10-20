@@ -171,6 +171,8 @@ bool retro_load_game(const struct retro_game_info* game)
   Config::SetBase(Config::MAIN_MMU,
                   Libretro::GetOption<bool>(core::MAIN_MMU, /*def=*/false));
 
+  //Config::SetBase(Config::MAIN_MMU, true);
+
   Config::SetBase(Config::MAIN_FAST_DISC_SPEED,
                   Libretro::GetOption<bool>(core::FAST_DISC_SPEED, /*def=*/false));
 

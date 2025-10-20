@@ -18,73 +18,82 @@
 // ----------
 #pragma once
 
+#include "Common/BitSet.h"
 #include "Core/PowerPC/CPUCoreBase.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/JitArm32/JitArmCache.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitFPRCache.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 #include "Core/PowerPC/JitArmCommon/BackPatch.h"
 #include "Core/PowerPC/JitCommon/JitBase.h"
+#include "Core/PowerPC/PowerPC.h"
 
-#define PPCSTATE_OFF(elem) ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
+#include <cstddef>
+#include <Common/RangeSizeSet.h>
 
-// Some asserts to make sure we will be able to load everything
-static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
-static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020, "VLDR can't reach all of the FPRs");
-static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
+extern "C" void JitArmTrampoline(JitBase& jit, u32 em_address);
+//extern "C" void LogRegHelper(const char* msg, u32 value);
 
-class JitArm : public JitBase, public ArmGen::ARMCodeBlock
+// Enable or disable JIT debug logging here
+#ifndef JIT_DEBUG
+#define JIT_DEBUG 1
+#endif
+
+#ifdef JIT_DEBUG
+  #ifndef JIT_LOG
+  #define JIT_LOG(fmt, ...) \
+    do { \
+        printf(fmt "\n", ##__VA_ARGS__); \
+        fflush(stdout); \
+    } while (0)
+  #endif
+  #define JIT_LOG_NUM(msg, num) \
+    do { \
+        LogNumFromJIT(msg, num); \
+    } while (0)
+  #define JIT_LOG_MSG(msg) \
+    do { \
+        LogNumFromJIT(msg, 0xFFFFFFFF); \
+    } while (0)
+  #define JIT_LOG_REG(msg, reg) \
+    do { \
+        LogRegFromJIT(msg, reg); \
+    } while (0)
+#else
+  #define JIT_LOG(fmt, ...)       do {} while (0)
+  #define JIT_LOG_NUM(msg, num)   do {} while (0)
+  #define JIT_LOG_MSG(msg)   	  do {} while (0)
+  #define JIT_LOG_REG(msg, reg)   do {} while (0)
+#endif
+
+class HostDisassembler;
+
+class JitArm : public JitBase, public ArmGen::ARMCodeBlock, public CommonAsmRoutinesBase
 {
-private:
-	JitArmBlockCache blocks;
-
-	JitArmAsmRoutineManager asm_routines;
-
-	// TODO: Make arm specific versions of these, shouldn't be too hard to
-	// make it so we allocate some space at the start(?) of code generation
-	// and keep the registers in a cache. Will burn this bridge when we get to
-	// it.
-	ArmRegCache gpr;
-	ArmFPRCache fpr;
-
-	PPCAnalyst::CodeBuffer code_buffer;
-
-	// The key is the backpatch flags
-	std::map<u32, BackPatchInfo> m_backpatch_info;
-
-	void DoDownCount();
-
-	void Helper_UpdateCR1(ArmGen::ARMReg fpscr, ArmGen::ARMReg temp);
-
-	void SetFPException(ArmGen::ARMReg Reg, u32 Exception);
-
-	ArmGen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set);
-
-	void BeginTimeProfile(JitBlock* b);
-	void EndTimeProfile(JitBlock* b);
-
-	bool BackPatch(SContext* ctx);
-	bool DisasmLoadStore(const u8* ptr, u32* flags, ArmGen::ARMReg* rD, ArmGen::ARMReg* V1);
-	// Initializes the information that backpatching needs
-	// This is required so we know the backpatch routine sizes and trouble offsets
-	void InitBackpatch();
-
-	// Returns the trouble instruction offset
-	// Zero if it isn't a fastmem routine
-	u32 EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, bool fastmem, bool do_padding, ArmGen::ARMReg RS, ArmGen::ARMReg V1 = ArmGen::ARMReg::INVALID_REG);
-
 public:
-	JitArm() : code_buffer(32000) {}
-	~JitArm() {}
+  explicit JitArm(Core::System& system);
+
+	~JitArm() override;
 
 	void Init();
 	void Shutdown();
 
 	// Jit!
 
-	void Jit(u32 em_address);
-	const u8* DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlock *b);
+  void Jit(u32 em_address) override;
+  void Jit(u32 em_address, bool clear_cache_and_retry_on_failure);
+	//bool DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlock *b);
+	bool DoJit(u32 em_address, JitBlock *b, u32 nextPC);
+
+	void EraseSingleBlock(const JitBlock& block) override;
+	std::vector<MemoryStats> GetMemoryStats() const override;
+
+	std::size_t DisassembleNearCode(const JitBlock& block, std::ostream& stream) const override;
+	std::size_t DisassembleFarCode(const JitBlock& block, std::ostream& stream) const override;
+
+	// Finds a free memory region
+    // Returns false if no free memory region can be found.
+    bool SetEmitterStateToFreeCodeRegion();
 
 	JitBaseBlockCache *GetBlockCache() { return &blocks; }
 
@@ -94,28 +103,52 @@ public:
 
 	void ClearCache();
 
-	CommonAsmRoutinesBase *GetAsmRoutines()
-	{
-		return &asm_routines;
-	}
-
-	const char *GetName()
+	const char *GetName() const
 	{
 		return "JITARM";
 	}
+
+	CommonAsmRoutinesBase* GetAsmRoutines() override { return this; }
 
 	// Run!
 	void Run();
 	void SingleStep();
 
-	// Utilities for use by opcodes
+	// Utilities for safer jumping > 32mb
+	void SafeB(const void* fnptr, bool optimize = false);
+	void SafeSetJumpTarget(const ArmGen::FixupBranch& branch);
 
-	void WriteExit(u32 destination);
+	// Exits
+	void
+    WriteExit(u32 destination, bool LK = false, u32 exit_address_after_return = 0,
+            ArmGen::ARMReg exit_address_after_return_reg = ArmGen::ARMReg::INVALID_REG);
+    void
+    WriteExit(ArmGen::ARMReg dest, bool LK = false, u32 exit_address_after_return = 0,
+            ArmGen::ARMReg exit_address_after_return_reg = ArmGen::ARMReg::INVALID_REG);
 	void WriteExitDestInR(ArmGen::ARMReg Reg);
 	void WriteRfiExitDestInR(ArmGen::ARMReg Reg);
-	void WriteExceptionExit();
+	void WriteConditionalExceptionExit(int exception, u32 increment_sp_on_exit = 0);
+	void WriteConditionalExceptionExit(int exception, ArmGen::ARMReg temp_gpr, ArmGen::ARMReg /* temp_fpr */,
+                                           u32 increment_sp_on_exit);
+	void FakeLKExit(u32 exit_address_after_return, ArmGen::ARMReg exit_address_after_return_reg);
+    void WriteExceptionExit(u32 destination, bool only_external = false,
+		bool always_exception = false);
+	void WriteExceptionExit(ArmGen::ARMReg dest, bool only_external = false,
+			bool always_exception = false);
+	void WriteBLRExit(ArmGen::ARMReg dest);
 	void WriteCallInterpreter(UGeckoInstruction _inst);
 	void Cleanup();
+
+	void FreeRanges();
+	void GenerateAsmAndResetFreeMemoryRanges();
+
+	// AsmRoutines
+  void GenerateAsm();
+  void GenerateCommonAsm();
+	void EmitUpdateMembase();
+
+	void ComputeRC0(ArmGen::ARMReg reg);
+	void ComputeRC0(u32 imm);
 
 	void ComputeRC(ArmGen::ARMReg value, int cr = 0);
 	void ComputeRC(s32 value, int cr);
@@ -124,11 +157,15 @@ public:
 	void ComputeCarry(bool Carry);
 	void GetCarryAndClear(ArmGen::ARMReg reg);
 	void FinalizeCarry(ArmGen::ARMReg reg);
+	void FlushCarry();
 
 	void SafeStoreFromReg(s32 dest, u32 value, s32 offsetReg, int accessSize, s32 offset);
 	void SafeLoadToReg(ArmGen::ARMReg dest, s32 addr, s32 offsetReg, int accessSize, s32 offset, bool signExtend, bool reverse, bool update);
 
+	void CompileInstruction(PPCAnalyst::CodeOp& op);
+
 	// OPCODES
+	using Instruction = void (JitArm::*)(UGeckoInstruction);
 	void FallBackToInterpreter(UGeckoInstruction _inst);
 	void DoNothing(UGeckoInstruction _inst);
 	void HLEFunction(UGeckoInstruction _inst);
@@ -151,7 +188,9 @@ public:
 
 	// Integer
 	void arith(UGeckoInstruction _inst);
+	void addic(UGeckoInstruction inst);
 
+	void addix(UGeckoInstruction inst);
 	void addex(UGeckoInstruction _inst);
 	void subfic(UGeckoInstruction _inst);
 	void cntlzwx(UGeckoInstruction _inst);
@@ -164,6 +203,8 @@ public:
 	void rlwimix(UGeckoInstruction _inst);
 	void rlwinmx(UGeckoInstruction _inst);
 	void rlwnmx(UGeckoInstruction _inst);
+	void rlwinmx_internal(UGeckoInstruction inst, u32 sh);
+
 	void srawix(UGeckoInstruction _inst);
 	void extshx(UGeckoInstruction inst);
 	void extsbx(UGeckoInstruction inst);
@@ -178,6 +219,9 @@ public:
 	void mtsr(UGeckoInstruction _inst);
 	void mfsr(UGeckoInstruction _inst);
 	void twx(UGeckoInstruction _inst);
+	void mtfsfx(UGeckoInstruction inst);
+	void UpdateFPExceptionSummary(ArmGen::ARMReg fpscr);
+	void UpdateRoundingMode();
 
 	// LoadStore
 	void stX(UGeckoInstruction _inst);
@@ -245,4 +289,152 @@ public:
 	void psq_lx(UGeckoInstruction _inst);
 	void psq_st(UGeckoInstruction _inst);
 	void psq_stx(UGeckoInstruction _inst);
+
+	template <bool condition>
+	void WriteBranchWatch(u32 origin, u32 destination, UGeckoInstruction inst,
+                              ArmGen::ARMReg reg_a, ArmGen::ARMReg reg_b,
+                              BitSet32 /*gpr_caller_save*/, BitSet32 /*fpr_caller_save*/);
+
+	void MMIOWriteRegToAddr(Core::System& system, MMIO::Mapping* mmio,
+                        ArmGen::ARMXEmitter* emit,
+                        ArmGen::ARMReg src_reg, u32 address, u32 flags);
+
+	void LogRegFromJIT(const char* msg, ArmGen::ARMReg reg = ArmGen::INVALID_REG);
+	void LogNumFromJIT(const char* msg, u32 value = -1);
+
+protected:
+	void SetBlockLinkingEnabled(bool enabled);
+	void SetOptimizationEnabled(bool enabled);
+
+  // Simple functions to switch between near and far code emitting
+	void SwitchToFarCode()
+	{
+		// Save current (near) emitter state into m_near_code
+		m_near_code.SetCodePtr(GetWritableCodePtr(),
+													 GetWritableCodeEnd(),
+													 HasWriteFailed());
+
+		// Switch emitter to the far buffer state
+		SetCodePtr(m_far_code.GetWritableCodePtr(),
+							 m_far_code.GetWritableCodeEnd(),
+							 m_far_code.HasWriteFailed());
+
+		m_in_far_code = true;
+	}
+
+	void SwitchToNearCode()
+	{
+		// Save current (far) emitter state back into m_far_code
+		m_far_code.SetCodePtr(GetWritableCodePtr(),
+													GetWritableCodeEnd(),
+													HasWriteFailed());
+
+		// Restore emitter to the saved near buffer state
+		SetCodePtr(m_near_code.GetWritableCodePtr(),
+							 m_near_code.GetWritableCodeEnd(),
+							 m_near_code.HasWriteFailed());
+
+		m_in_far_code = false;
+	}
+
+	bool IsInFarCode() const { return m_in_far_code; }
+
+	void DoDownCount();
+	void ResetStack();
+	void IntializeSpeculativeConstants();
+	void MSRUpdated(ArmGen::ARMReg msr);
+
+	void Helper_UpdateCR1(ArmGen::ARMReg fpscr, ArmGen::ARMReg temp);
+
+	void SetFPException(ArmGen::ARMReg Reg, u32 Exception);
+
+	ArmGen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set);
+
+	void BeginTimeProfile(JitBlock* b);
+	void EndTimeProfile(JitBlock* b);
+
+	bool BackPatch(SContext* ctx);
+	bool DisasmLoadStore(const u8* ptr, u32* flags, ArmGen::ARMReg* rD, ArmGen::ARMReg* V1);
+	// Initializes the information that backpatching needs
+	// This is required so we know the backpatch routine sizes and trouble offsets
+	void InitBackpatch();
+
+	// This enum is used for selecting an implementation of EmitBackpatchRoutine.
+	enum class MemAccessMode
+	{
+		// Always calls the slow C++ code. For performance reasons, should generally only be used if
+		// the guest address is known in advance and IsOptimizableRAMAddress returns false for it.
+		AlwaysSlowAccess,
+		// Only emits fast access code. Must only be used if the guest address is known in advance
+		// and IsOptimizableRAMAddress returns true for it, otherwise Dolphin will likely crash!
+		AlwaysFastAccess,
+		// Best in most cases. If backpatching is possible (!emitting_routine && jo.fastmem):
+		// Tries to run fast access code, and if that fails, uses backpatching to replace the code
+		// with a call to the slow C++ code. Otherwise: Checks whether the fast access code will work,
+		// then branches to either the fast access code or the slow C++ code.
+		Auto,
+	};
+
+	// Returns the trouble instruction offset
+	// Zero if it isn't a fastmem routine
+	u32 EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, MemAccessMode mode, bool do_padding,
+		ArmGen::ARMReg RS, ArmGen::ARMReg V1 = ArmGen::ARMReg::INVALID_REG);
+
+	// TODO: make void return
+	u32 EmitBackpatchRoutine(u32 flags, MemAccessMode mode, ArmGen::ARMReg RS,
+                              ArmGen::ARMReg V1 /* now addr */, BitSet32 gprs_to_push = BitSet32(0),
+                              BitSet32 fprs_to_push = BitSet32(0), bool emitting_routine = false,
+							  ARMXEmitter* emit = nullptr, bool do_padding = false);
+	void FlushPPCStateBeforeSlowAccess(ArmGen::ARMReg temp_gpr, ArmGen::ARMReg temp_fpr);
+
+	void ABI_PushCallerGPRsAndAdjustStack_BP(ARMXEmitter* emit);
+	void ABI_PopCallerGPRsAndAdjustStack_BP(ARMXEmitter* emit);
+	void ABI_PushCallerGPRsAndAdjustStack_Asm();
+	void ABI_PopCallerGPRsAndAdjustStack_Asm();
+
+	struct FastmemArea
+	{
+		const u8* fast_access_code;
+		const u8* slow_access_code;
+	};
+
+	JitArmBlockCache blocks{*this};
+	//JitArmBlockCache blocks;
+
+	// <Fast path fault location, slow path handler location>
+	std::map<const u8*, FastmemArea> m_fault_to_handler{};
+
+	// TODO: Make arm specific versions of these, shouldn't be too hard to
+	// make it so we allocate some space at the start(?) of code generation
+	// and keep the registers in a cache. Will burn this bridge when we get to
+	// it.
+	ArmGPRCache gpr;
+	ArmFPRCache fpr;
+
+	const u8* m_increment_profile_counter;
+
+	// The key is the backpatch flags
+	std::map<u32, BackPatchInfo> m_backpatch_info;
+
+	// Backed up when we switch to far code.
+	ArmGen::ARMCodeBlock m_near_code;
+	ArmGen::ARMCodeBlock m_far_code;
+	u8* m_near_code_end = nullptr;
+    bool m_near_code_write_failed = false;
+	bool m_in_far_code = false;
+
+	// Free‑range set for that buffer
+	Common::RangeSizeSet<u8*> m_free_ranges_near;
+	Common::RangeSizeSet<u8*> m_free_ranges_far;
+
+  std::unique_ptr<HostDisassembler> m_disassembler;
 };
+
+struct JitLogEntry {
+  const char* msg;
+  u32 value;
+};
+
+extern JitLogEntry g_jit_log_buffer[256];
+extern std::atomic<u32> g_jit_log_write_idx;
+extern std::atomic<u32> g_jit_log_read_idx;

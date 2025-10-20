@@ -23,7 +23,8 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 project(dolphin-emu)
 
-if (CMAKE_VERSION VERSION_LESS "3.25" AND CMAKE_SYSTEM_NAME MATCHES "Linux")
+if(CMAKE_CXX_COMPILER MATCHES "arm-webos-linux-gnueabi-"
+   OR (CMAKE_VERSION VERSION_LESS "3.25" AND CMAKE_SYSTEM_NAME MATCHES "Linux"))
   set(LINUX TRUE)
 endif()
 
@@ -536,8 +537,8 @@ if(LIBRETRO)
     endif()
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
       message(STATUS "Debug build: enabling extra debug flags")
-      set(CMAKE_C_FLAGS_DEBUG "-O0 -g -fno-omit-frame-pointer")
-      set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -fno-omit-frame-pointer")
+      set(CMAKE_C_FLAGS_DEBUG "-O0 -g -fno-omit-frame-pointer -mno-unaligned-access")
+      set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -fno-omit-frame-pointer -mno-unaligned-access")
     endif()
     set(USE_SYSTEM_CURL OFF CACHE BOOL "" FORCE)
   endif()

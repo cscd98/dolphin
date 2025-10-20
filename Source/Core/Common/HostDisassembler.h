@@ -15,6 +15,7 @@ public:
   enum class Platform
   {
     x86_64,
+    arm,
     aarch64,
   };
 

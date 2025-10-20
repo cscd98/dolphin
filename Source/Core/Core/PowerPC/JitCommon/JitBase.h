@@ -37,7 +37,7 @@ struct PowerPCState;
 }  // namespace PowerPC
 class PPCSymbolDB;
 
-// #define JIT_LOG_GENERATED_CODE  // Enables logging of generated code
+#define JIT_LOG_GENERATED_CODE  // Enables logging of generated code
 // #define JIT_LOG_GPR             // Enables logging of the PPC general purpose regs
 // #define JIT_LOG_FPR             // Enables logging of the PPC floating point regs
 

@@ -36,6 +36,9 @@ enum class CPUCore
 {
   Interpreter = 0,
   JIT64 = 1,
+#ifdef _M_ARM_32
+  JITARM = 3,
+#endif
   JITARM64 = 4,
   CachedInterpreter = 5,
 };
@@ -130,6 +133,15 @@ struct PowerPCState
   u8* gather_pipe_base_ptr = nullptr;
 
   u32 gpr[32]{};  // General purpose registers. r1 = stack pointer.
+
+  //u32 jit_debug_scratch[16];
+  //u32 jit_debug_scratch[32];
+  //u32 interpreter_stack_save;  // Temporary for interpreter calls
+  //u32 jit_return_address;
+  
+  //JitLogEntry jit_log_buf[JIT_LOG_CAP];
+  //u32         jit_log_head;  // written by JIT
+  //u32         jit_log_tail;  // consumed by host
 
 #ifndef _M_X86_64
   // The paired singles are strange : PS0 is stored in the full 64 bits of each FPR

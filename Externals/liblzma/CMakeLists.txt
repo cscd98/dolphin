@@ -51,10 +51,6 @@ endif()
 add_definitions(-DHAVE_CONFIG_H)
 add_definitions(-DLZMA_API_STATIC)
 
-if(NOT MINGW)
-    add_definitions(-DHAVE_WCWIDTH=1)
-endif()
-
 #============================================================================
 # lzma
 #============================================================================

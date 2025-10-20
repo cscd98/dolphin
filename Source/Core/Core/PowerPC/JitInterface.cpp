@@ -27,6 +27,10 @@
 #include "Core/PowerPC/Jit64/Jit.h"
 #endif
 
+#if _M_ARM_32
+#include "Core/PowerPC/JitArm32/Jit.h"
+#endif
+
 #ifdef _M_ARM_64
 #include "Core/PowerPC/JitArm64/Jit.h"
 #endif

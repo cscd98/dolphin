@@ -422,6 +422,8 @@ static void CpuThread(Core::System& system, const std::optional<std::string> sav
     return;
 #endif
   // Enter CPU run loop. When we leave it - we are done.
+  printf("CPU thread starting Run loop\n");
+  fflush(stdout);
   system.GetCPU().Run();
 
 #ifdef USE_MEMORYWATCHER

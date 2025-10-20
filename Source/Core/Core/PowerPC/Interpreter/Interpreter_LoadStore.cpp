@@ -445,7 +445,14 @@ void Interpreter::sthu(Interpreter& interpreter, UGeckoInstruction inst)
 void Interpreter::stw(Interpreter& interpreter, UGeckoInstruction inst)
 {
   auto& ppc_state = interpreter.m_ppc_state;
-  interpreter.m_mmu.Write<u32>(ppc_state.gpr[inst.RS], Helper_Get_EA(ppc_state, inst));
+
+  const u32 value   = ppc_state.gpr[inst.RS];
+  const u32 address = Helper_Get_EA(ppc_state, inst);
+  //printf("stw @PC=0x%08x: NPC=0x%08x RS=%u value=0x%08x EA=0x%08x\n",
+  //  ppc_state.pc, ppc_state.npc, inst.RS, value, address);
+  //fflush(stdout);
+
+  interpreter.m_mmu.Write<u32>(ppc_state.gpr[inst.RS], address);
 }
 
 void Interpreter::stwu(Interpreter& interpreter, UGeckoInstruction inst)

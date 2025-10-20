@@ -7,7 +7,6 @@
 #include "Core/PowerPC/Interpreter/Interpreter_FPUtils.h"
 
 #include "Core/PowerPC/JitArm32/Jit.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitFPRCache.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 
@@ -52,7 +51,7 @@ inline void JitArm::SetFPException(ArmGen::ARMReg Reg, u32 Exception)
 			ExceptionMask = &VXSQRTException;
 		break;
 		default:
-			_assert_msg_(DYNA_REC, false, "Passed unsupported FPexception: 0x%08x", Exception);
+			ASSERT_MSG(DYNA_REC, false, "Passed unsupported FPexception: 0x{:08x}", Exception);
 			return;
 		break;
 	}

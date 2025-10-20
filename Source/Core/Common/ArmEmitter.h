@@ -28,6 +28,8 @@
 #define IS_SIGNED     1 << 1
 #define ROUND_TO_ZERO 1 << 2
 
+extern "C" void LogFMLHelper(const char* msg, u32 value);
+
 namespace ArmGen
 {
 enum ARMReg
@@ -132,7 +134,7 @@ public:
 	Operand2(ARMReg base, ShiftType type, ARMReg shift) // RSR
 	{
 		Type = TYPE_RSR;
-		_assert_msg_(DYNA_REC, type != ST_RRX, "Invalid Operand2: RRX does not take a register shift amount");
+		ASSERT_MSG(DYNA_REC, type != ST_RRX, "Invalid Operand2: RRX does not take a register shift amount");
 		IndexOrShift = shift;
 		Shift = type;
 		Value = base;
@@ -144,29 +146,29 @@ public:
 		switch (type)
 		{
 		case ST_LSL:
-			_assert_msg_(DYNA_REC, shift < 32, "Invalid Operand2: LSL %u", shift);
+			ASSERT_MSG(DYNA_REC, shift < 32, "Invalid Operand2: LSL {}", shift);
 			break;
 		case ST_LSR:
-			_assert_msg_(DYNA_REC, shift <= 32, "Invalid Operand2: LSR %u", shift);
+			ASSERT_MSG(DYNA_REC, shift <= 32, "Invalid Operand2: LSR {}", shift);
 			if (!shift)
 				type = ST_LSL;
 			if (shift == 32)
 				shift = 0;
 			break;
 		case ST_ASR:
-			_assert_msg_(DYNA_REC, shift < 32, "Invalid Operand2: LSR %u", shift);
+			ASSERT_MSG(DYNA_REC, shift < 32, "Invalid Operand2: LSR {}", shift);
 			if (!shift)
 				type = ST_LSL;
 			if (shift == 32)
 				shift = 0;
 			break;
 		case ST_ROR:
-			_assert_msg_(DYNA_REC, shift < 32, "Invalid Operand2: ROR %u", shift);
+			ASSERT_MSG(DYNA_REC, shift < 32, "Invalid Operand2: ROR {}", shift);
 			if (!shift)
 				type = ST_LSL;
 			break;
 		case ST_RRX:
-			_assert_msg_(DYNA_REC, shift == 0, "Invalid Operand2: RRX does not take an immediate shift amount");
+			ASSERT_MSG(DYNA_REC, shift == 0, "Invalid Operand2: RRX does not take an immediate shift amount");
 			type = ST_ROR;
 			break;
 		}
@@ -188,45 +190,45 @@ public:
 		case TYPE_RSR:
 			return RSR();
 		default:
-			_assert_msg_(DYNA_REC, false, "GetData with Invalid Type");
+			ASSERT_MSG(DYNA_REC, false, "GetData with Invalid Type");
 			return 0;
 		}
 	}
 	u32 IMMSR() // IMM shifted register
 	{
-		_assert_msg_(DYNA_REC, Type == TYPE_IMMSREG, "IMMSR must be imm shifted register");
+		ASSERT_MSG(DYNA_REC, Type == TYPE_IMMSREG, "IMMSR must be imm shifted register");
 		return ((IndexOrShift & 0x1f) << 7 | (Shift << 5) | Value);
 	}
 	u32 RSR() // Register shifted register
 	{
-		_assert_msg_(DYNA_REC, Type == TYPE_RSR, "RSR must be RSR Of Course");
+		ASSERT_MSG(DYNA_REC, Type == TYPE_RSR, "RSR must be RSR Of Course");
 		return (IndexOrShift << 8) | (Shift << 5) | 0x10 | Value;
 	}
 	u32 Rm()
 	{
-		_assert_msg_(DYNA_REC, Type == TYPE_REG, "Rm must be with Reg");
+		ASSERT_MSG(DYNA_REC, Type == TYPE_REG, "Rm must be with Reg");
 		return Value;
 	}
 
 	u32 Imm5()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm5 not IMM value");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm5 not IMM value");
 		return ((Value & 0x0000001F) << 7);
 	}
 	u32 Imm8()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm8Rot not IMM value");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm8Rot not IMM value");
 		return Value & 0xFF;
 	}
 	u32 Imm8Rot() // IMM8 with Rotation
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm8Rot not IMM value");
-		_assert_msg_(DYNA_REC, (Rotation & 0xE1) != 0, "Invalid Operand2: immediate rotation %u", Rotation);
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm8Rot not IMM value");
+		ASSERT_MSG(DYNA_REC, (Rotation & 0xE1) != 0, "Invalid Operand2: immediate rotation {}", Rotation);
 		return (1 << 25) | (Rotation << 7) | (Value & 0x000000FF);
 	}
 	u32 Imm12()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm12 not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm12 not IMM");
 		return (Value & 0x00000FFF);
 	}
 
@@ -237,12 +239,12 @@ public:
 		// expand a 8bit IMM to a 32bit value and gives you some rotation as
 		// well.
 		// Each rotation rotates to the right by 2 bits
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm12Mod not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm12Mod not IMM");
 		return ((Rotation & 0xF) << 8) | (Value & 0xFF);
 	}
 	u32 Imm16()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm16 not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm16 not IMM");
 		return ( (Value & 0xF000) << 4) | (Value & 0x0FFF);
 	}
 	u32 Imm16Low()
@@ -251,23 +253,23 @@ public:
 	}
 	u32 Imm16High() // Returns high 16bits
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm16 not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm16 not IMM");
 		return ( ((Value >> 16) & 0xF000) << 4) | ((Value >> 16) & 0x0FFF);
 	}
 	u32 Imm24()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm16 not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm16 not IMM");
 		return (Value & 0x0FFFFFFF);
 	}
 	// NEON and ASIMD specific
 	u32 Imm8ASIMD()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm8ASIMD not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm8ASIMD not IMM");
 		return  ((Value & 0x80) << 17) | ((Value & 0x70) << 12) | (Value & 0xF);
 	}
 	u32 Imm8VFP()
 	{
-		_assert_msg_(DYNA_REC, (Type == TYPE_IMM), "Imm8VFP not IMM");
+		ASSERT_MSG(DYNA_REC, (Type == TYPE_IMM), "Imm8VFP not IMM");
 		return ((Value & 0xF0) << 12) | (Value & 0xF);
 	}
 };
@@ -287,14 +289,23 @@ inline Operand2 R(ARMReg Reg)  { return Operand2(Reg, TYPE_REG); }
 inline Operand2 IMM(u32 Imm)   { return Operand2(Imm, TYPE_IMM); }
 inline Operand2 Mem(void *ptr) { return Operand2((u32)ptr, TYPE_IMM); }
 //usage: struct {int e;} s; STRUCT_OFFSET(s,e)
-#define STRUCT_OFF(str,elem) ((u32)((u32)&(str).elem-(u32)&(str)))
-
+//#define STRUCT_OFF(str,elem) ((u32)((u32)&(str).elem-(u32)&(str)))
 
 struct FixupBranch
 {
+	enum class Type : u32
+	{
+    BConditional,  // B<cond> (branch if condition codes satisfied)
+    B, // Unconditional branch
+    BL, // Branch with link (call)
+    BX, // Branch to register (needed for far targets / interworking)
+    BLX, // Branch with link to register
+    BKPT, // Breakpoint (used as placeholder/fixup)
+	};
+
 	u8 *ptr;
 	u32 condition; // Remembers our codition at the time
-	int type; //0 = B 1 = BL
+	Type type; // 0 = B 1 = BL
 };
 
 struct LiteralPool
@@ -326,8 +337,20 @@ class ARMXEmitter
 	friend struct OpArg;  // for Write8 etc
 	friend class NEONXEmitter;
 private:
-	u8 *code, *startcode;
-	u8 *lastCacheFlushEnd;
+	// Pointer to memory where code will be emitted to.
+	u8* m_code = nullptr;
+
+	// Pointer past the end of the memory region we're allowed to emit to.
+	// Writes that would reach this memory are refused and will set the m_write_failed flag instead.
+	u8* m_code_end = nullptr;
+
+	u8* m_lastCacheFlushEnd = nullptr;
+
+	// Set to true when a write request happens that would write past m_code_end.
+	// Must be cleared with SetCodePtr() afterwards.
+	bool m_write_failed = false;
+
+	u8 *startcode;
 	u32 condition;
 	std::vector<LiteralPool> currentLitPool;
 
@@ -345,28 +368,41 @@ private:
 	void WriteInstruction(u32 op, ARMReg Rd, ARMReg Rn, Operand2 Rm, bool SetFlags = false);
 
 protected:
-	inline void Write32(u32 value) {*(u32*)code = value; code+=4;}
+  void Write32(u32 value);
 
 public:
-	ARMXEmitter() : code(nullptr), startcode(nullptr), lastCacheFlushEnd(nullptr) {
+	ARMXEmitter() : m_code(nullptr), m_lastCacheFlushEnd(nullptr), startcode(nullptr) {
 		condition = CC_AL << 28;
 	}
-	ARMXEmitter(u8* code_ptr) {
-		code = code_ptr;
-		lastCacheFlushEnd = code_ptr;
-		startcode = code_ptr;
+
+	ARMXEmitter(u8* code, u8* code_end)
+		: m_code(code), m_code_end(code_end)
+		, m_lastCacheFlushEnd(code)
+	{
+		m_code = code;
+		m_code_end = code_end;
+		m_lastCacheFlushEnd = code;
+		startcode = code;
 		condition = CC_AL << 28;
 	}
 	virtual ~ARMXEmitter() {}
 
 	void SetCodePtr(u8 *ptr);
+	void SetCodePtr(u8* ptr, u8* end, bool write_failed = false);
+	void SetCodePtrUnsafe(u8* ptr, u8* end, bool write_failed = false);
+	const u8* GetCodeEnd() const { return m_code_end; }
+	u8* GetWritableCodeEnd() { return m_code_end; }
+	u8 *GetWritableCodePtr();
 	void ReserveCodeSpace(u32 bytes);
 	const u8 *AlignCode16();
 	const u8 *AlignCodePage();
 	const u8 *GetCodePtr() const;
 	void FlushIcache();
 	void FlushIcacheSection(u8 *start, u8 *end);
-	u8 *GetWritableCodePtr();
+
+	// Should be checked after a block of code has been generated to see if the code has been
+  // successfully written to memory. Do not call the generated code when this returns true!
+  bool HasWriteFailed() const { return m_write_failed; }
 
 	void FlushLitPool();
 	void AddNewLit(u32 val);
@@ -403,15 +439,29 @@ public:
 	FixupBranch BL();
 	FixupBranch BL_CC(CCFlags Cond);
 	void SetJumpTarget(FixupBranch const &branch);
+	FixupBranch WriteFixupBranch();
 
+	FixupBranch B(CCFlags cond);
 	void B (const void *fnptr);
 	void B (ARMReg src);
 	void BL(const void *fnptr);
-	void BL(ARMReg src);
-	bool BLInRange(const void *fnptr);
+	void BX(ARMReg reg);
+	void BLX(ARMReg src);
+
+	void ABI_PushCalleeGPRsAndAdjustStack(bool link_register = false);
+	void ABI_PopCalleeGPRsAndAdjustStack(bool link_register = false);
 
 	void PUSH(const int num, ...);
 	void POP(const int num, ...);
+
+	bool IsBranchInRange(const void *fnptr);
+	static inline bool IsBranchInRange(const void* target, const u8* code_ptr)
+  {
+    const intptr_t byte_delta =
+      reinterpret_cast<intptr_t>(target) -
+      (reinterpret_cast<intptr_t>(code_ptr) + 8);
+    return (byte_delta > -0x2000000 && byte_delta <= 0x1FFFFFF);
+  }
 
 	// New Data Ops
 	void AND (ARMReg Rd, ARMReg Rn, Operand2 Rm);
@@ -446,6 +496,7 @@ public:
 	void ORR (ARMReg dest, ARMReg src, Operand2 op2);
 	void ORRS(ARMReg dest, ARMReg src, Operand2 op2);
 	void MOV (ARMReg dest,             Operand2 op2);
+	void MOV (ARMReg Rd,   ARMReg Rm);
 	void MOVS(ARMReg dest,             Operand2 op2);
 	void BIC (ARMReg dest, ARMReg src, Operand2 op2);   // BIC = ANDN
 	void BICS(ARMReg dest, ARMReg src, Operand2 op2);
@@ -533,6 +584,11 @@ public:
 	void VMOV(ARMReg Dest, Operand2 op2);
 	void VMOV(ARMReg Dest, ARMReg Src, bool high);
 	void VMOV(ARMReg Dest, ARMReg Src);
+	// Move a VFP double register into two ARM core registers (Dn → Rt, Rt2)
+	void VMOV_D_to_RR(ARMReg Rlow, ARMReg Rhigh, ARMReg Dsrc);
+	// Move two ARM core registers into a VFP double register (Rt, Rt2 → Dn)
+	void VMOV_RR_to_D(ARMReg Ddest, ARMReg Rlow, ARMReg Rhigh);
+
 	void VCVT(ARMReg Dest, ARMReg Src, int flags);
 
 	void VMRS(ARMReg Rt);
@@ -578,7 +634,7 @@ private:
 		else if (value & I_64)
 			return 3;
 		else
-			_dbg_assert_msg_(DYNA_REC, false, "Passed invalid size to integer NEON instruction");
+			DEBUG_ASSERT_MSG(DYNA_REC, false, "Passed invalid size to integer NEON instruction");
 		return 0;
 	}
 
@@ -683,7 +739,7 @@ public:
 	void VST1(u32 Size, ARMReg Vd, ARMReg Rn, NEONAlignment align = ALIGN_NONE, ARMReg Rm = _PC);
 };
 
-class ARMCodeBlock : public CodeBlock<ARMXEmitter>
+class ARMCodeBlock : public Common::CodeBlock<ARMXEmitter>
 {
 private:
 	void PoisonMemory() override

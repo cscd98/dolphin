@@ -133,6 +133,9 @@ typedef mcontext_t SContext;
 #define CTX_LR regs[30]
 #define CTX_SP sp
 #define CTX_PC pc
+#elif _M_ARM_32
+// Add others if required.
+#define CTX_PC arm_pc
 #else
 #error No context definition for architecture
 #endif

@@ -28,8 +28,8 @@ std::queue<std::unique_ptr<sf::TcpSocket>> GeckoSockServer::waiting_socks;
 
 GeckoSockServer::GeckoSockServer() : client_running(false)
 {
-  if (!connectionThread.joinable())
-    connectionThread = std::thread(GeckoConnectionWaiter);
+ //if (!connectionThread.joinable())
+ //   connectionThread = std::thread(GeckoConnectionWaiter);
 }
 
 GeckoSockServer::~GeckoSockServer()

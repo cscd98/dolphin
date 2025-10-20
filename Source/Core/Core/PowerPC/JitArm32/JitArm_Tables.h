@@ -6,9 +6,3 @@
 
 #include "Core/PowerPC/Gekko.h"
 #include "Core/PowerPC/PPCTables.h"
-
-namespace JitArmTables
-{
-	void CompileInstruction(PPCAnalyst::CodeOp & op);
-	void InitTables();
-}

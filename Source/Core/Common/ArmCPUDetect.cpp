@@ -45,6 +45,12 @@
 #include "Common/FileUtil.h"
 #include "Common/StringUtil.h"
 
+#if defined(__WEBOS__)
+#ifndef HWCAP_CPUID
+#define HWCAP_CPUID (1 << 11)
+#endif
+#endif
+
 #if defined(__APPLE__) || defined(__FreeBSD__)
 
 static bool SysctlByName(std::string* value, const std::string& name)
@@ -172,12 +178,21 @@ static u32 ReadHwCap(u32 type)
 // other measures are taken, executing the instruction may cause the caller to be switched onto a
 // different core when it resumes (and of course, caller could be preempted at any other time as
 // well).
+#if defined(_M_ARM_64)
 static inline u64 Read_MIDR_EL1_Direct()
 {
   u64 value;
   __asm__ __volatile__("mrs %0, MIDR_EL1" : "=r"(value));
   return value;
 }
+#elif defined(_M_ARM_32)
+static inline u64 Read_MIDR_EL1_Direct()
+{
+  u32 value;
+  asm volatile("mrc p15, 0, %0, c0, c0, 0" : "=r"(value));
+  return value;
+}
+#endif
 
 static bool Read_MIDR_EL1(u64* value)
 {
@@ -213,6 +228,28 @@ static std::string MIDRToString(u64 midr)
                      revision);
 }
 
+#endif
+
+#if defined(_M_ARM_32)
+static bool CheckCPUFeature(const std::string& feature)
+{
+#if defined(__linux__)
+  std::string features = ReadCpuinfoField("Features");
+  if (features.empty())
+    return false;
+
+  std::istringstream iss(features);
+  std::string token;
+  while (iss >> token)
+  {
+    if (token == feature)
+      return true;
+  }
+  return false;
+#else
+  return false;
+#endif
+}
 #endif
 
 CPUInfo cpu_info;
@@ -334,11 +371,38 @@ void CPUInfo::Detect()
   }
 #endif
 
+#if defined(_M_ARM_32)
+  bSwp = CheckCPUFeature("swp");
+  bHalf = CheckCPUFeature("half");
+  bThumb = CheckCPUFeature("thumb");
+  bFastMult = CheckCPUFeature("fastmult");
+  bVFP = CheckCPUFeature("vfp");
+  bEDSP = CheckCPUFeature("edsp");
+  bThumbEE = CheckCPUFeature("thumbee");
+  bNEON = CheckCPUFeature("neon") || CheckCPUFeature("asimd");
+  bVFPv3 = CheckCPUFeature("vfpv3") || CheckCPUFeature("fp");
+  bTLS = CheckCPUFeature("tls");
+  bVFPv4 = CheckCPUFeature("vfpv4") || CheckCPUFeature("fp");
+  bIDIVa = CheckCPUFeature("idiva");
+  bIDIVt = CheckCPUFeature("idivt");
+#endif
+
+#define HWCAP2_AES	(1 << 0)
+
+#ifndef _M_ARM_32
   const u32 hwcap = ReadHwCap(AT_HWCAP);
   bAES = hwcap & HWCAP_AES;
   bCRC32 = hwcap & HWCAP_CRC32;
   bSHA1 = hwcap & HWCAP_SHA1;
   bSHA2 = hwcap & HWCAP_SHA2;
+#else
+  // On ARM32, HWCAP2 may not be available
+  // so we rely on /proc/cpuinfo parsing above.
+  bAES = CheckCPUFeature("aes");
+  bCRC32 = CheckCPUFeature("crc32");
+  bSHA1 = CheckCPUFeature("sha1");
+  bSHA2 = CheckCPUFeature("sha2");
+#endif
 
 #if defined(AT_HWCAP2) && defined(HWCAP2_AFP)
   const u32 hwcap2 = ReadHwCap(AT_HWCAP2);
@@ -349,6 +413,17 @@ void CPUInfo::Detect()
   if (Read_MIDR_EL1(&midr))
   {
     cpu_id = MIDRToString(midr);
+
+#ifdef _M_ARM_32
+    u8 implementer = (midr >> 24) & 0xff;
+    u16 part_num   = (midr >> 4) & 0xfff;
+    // Qualcomm Krait supports IDIVA but doesn't report it. Check for Krait.
+    if (implementer == 0x51 && part_num == 0x6F) // 0x6F = Krait(300), 0x4D = Scorpion
+    {
+      bIDIVa = true;
+      bIDIVt = true;
+    }
+#endif
   }
 #elif defined(__OpenBSD__)
   // OpenBSD
@@ -400,5 +475,33 @@ std::string CPUInfo::Summarize()
   if (bSHA2)
     sum.push_back("SHA2");
 
+#if defined(_M_ARM_32)
+  if (bSwp)
+    sum.push_back("SWP");
+  if (bHalf)
+    sum.push_back("HALF");
+  if (bThumb)
+    sum.push_back("THUMB");
+  if (bFastMult)
+    sum.push_back("FASTMULT");
+  if (bVFP)
+    sum.push_back("VFP");
+  if (bEDSP)
+    sum.push_back("EDSP");
+  if (bThumbEE)
+    sum.push_back("THUMBEE");
+  if (bNEON)
+    sum.push_back("NEON");
+  if (bVFPv3)
+    sum.push_back("VFPv3");
+  if (bTLS)
+    sum.push_back("TLS");
+  if (bVFPv4)
+    sum.push_back("VFPv4");
+  if (bIDIVa)
+    sum.push_back("IDIVA");
+  if (bIDIVt)
+    sum.push_back("IDIVT");
+#endif
   return fmt::to_string(fmt::join(sum, ","));
 }

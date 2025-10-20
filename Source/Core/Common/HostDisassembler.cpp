@@ -138,6 +138,8 @@ std::unique_ptr<HostDisassembler> HostDisassembler::Factory(Platform arch)
 #if defined(HAVE_LLVM)
   case Platform::x86_64:
     return std::make_unique<HostDisassemblerLLVM>("x86_64-none-unknown");
+  case Platform::arm:
+    return std::make_unique<HostDisassemblerLLVM>("arm-none-unknown", "cortex-a9", 4);
   case Platform::aarch64:
     return std::make_unique<HostDisassemblerLLVM>("aarch64-none-unknown", "cortex-a57", 4);
 #elif defined(_M_X86_64)

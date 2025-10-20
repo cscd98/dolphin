@@ -91,7 +91,7 @@ struct JitBlock : public JitBlockData
   struct LinkData
   {
     u8* exitPtrs;  // to be able to rewrite the exit jump
-#ifdef _M_ARM_64
+#if defined(_M_ARM_64) || defined(_M_ARM_32)
     const u8* exitFarcode;
 #endif
     u32 exitAddress;

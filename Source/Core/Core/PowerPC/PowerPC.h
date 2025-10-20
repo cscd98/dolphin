@@ -20,6 +20,7 @@
 #include "Core/PowerPC/Gekko.h"
 #include "Core/PowerPC/PPCCache.h"
 #include "Core/PowerPC/PPCSymbolDB.h"
+#include "Core/PowerPC/MMU.h"
 
 class CPUCoreBase;
 class PointerWrap;
@@ -30,12 +31,16 @@ struct EventType;
 
 namespace PowerPC
 {
+  void FMLLogRegHelper(const char* msg, uint32_t value);
 // The gaps in the CPUCore numbering are from cores that only existed in the past.
 // We avoid re-numbering cores so that settings will be compatible across versions.
 enum class CPUCore
 {
   Interpreter = 0,
   JIT64 = 1,
+#ifdef _M_ARM_32
+  JITARM = 3,
+#endif
   JITARM64 = 4,
   CachedInterpreter = 5,
 };

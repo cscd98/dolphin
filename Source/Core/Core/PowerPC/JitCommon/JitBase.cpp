@@ -90,6 +90,9 @@ const u8* JitBase::Dispatch(JitBase& jit)
 
 void JitTrampoline(JitBase& jit, u32 em_address)
 {
+  printf("JIT TRAMPOLINE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+  printf("JitTrampoline: jit=%p em_address=%08x\n", (void*)&jit, em_address);
+  fflush(stdout);
   jit.Jit(em_address);
 }
 

@@ -27,7 +27,7 @@
 #include "Core/PowerPC/Jit64/Jit.h"
 #endif
 
-#if _M_ARM_32
+#ifdef _M_ARM_32
 #include "Core/PowerPC/JitArm32/Jit.h"
 #endif
 
@@ -59,6 +59,11 @@ CPUCoreBase* JitInterface::InitJitCore(PowerPC::CPUCore core)
 #ifdef _M_X86_64
   case PowerPC::CPUCore::JIT64:
     m_jit = std::make_unique<Jit64>(m_system);
+    break;
+#endif
+#ifdef _M_ARM_32
+  case PowerPC::CPUCore::JITARM:
+    m_jit = std::make_unique<JitArm>(m_system);
     break;
 #endif
 #ifdef _M_ARM_64

@@ -21,70 +21,163 @@
 #include "Core/PowerPC/CPUCoreBase.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/JitArm32/JitArmCache.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitFPRCache.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 #include "Core/PowerPC/JitArmCommon/BackPatch.h"
 #include "Core/PowerPC/JitCommon/JitBase.h"
+#include "Core/PowerPC/PowerPC.h"
 
-#define PPCSTATE_OFF(elem) ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
+#include <cstddef>
+#include <rangeset/rangesizeset.h>
 
-// Some asserts to make sure we will be able to load everything
-static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
-static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020, "VLDR can't reach all of the FPRs");
-static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
+// -----------------------------------------------------------------------------
+// ARM32 PPCState offset macros — per-expansion silencing, dynamic indexing,
+// struct-relative parity with ARM64.
+// Requires C++20 (consteval).
+// -----------------------------------------------------------------------------
 
-class JitArm : public JitBase, public ArmGen::ARMCodeBlock
+// Struct member offset (no indexing in the argument)
+#define PPCSTATE_OFF(elem)                                                      \
+  ([]() consteval {                                                             \
+    _Pragma("GCC diagnostic push")                                              \
+    _Pragma("GCC diagnostic ignored \"-Winvalid-offsetof\"")                    \
+    return static_cast<s32>(offsetof(PowerPC::PowerPCState, elem));             \
+    _Pragma("GCC diagnostic pop")                                               \
+  }())
+
+// Array base and element size (silenced at expansion site)
+#define PPCSTATE_ARRAY_BASE(elem)                                               \
+  ([]() consteval {                                                             \
+    _Pragma("GCC diagnostic push")                                              \
+    _Pragma("GCC diagnostic ignored \"-Winvalid-offsetof\"")                    \
+    return static_cast<s32>(offsetof(PowerPC::PowerPCState, elem[0]));          \
+    _Pragma("GCC diagnostic pop")                                               \
+  }())
+
+#define PPCSTATE_ARRAY_ELEM_SIZE(elem)                                          \
+  ([]() consteval {                                                             \
+    return static_cast<s32>(sizeof(PowerPC::PowerPCState::elem[0]));            \
+  }())
+
+// Runtime-safe array offset (accepts dynamic indices)
+#define PPCSTATE_OFF_ARRAY(elem, i)                                             \
+  (PPCSTATE_ARRAY_BASE(elem) +                                                  \
+   PPCSTATE_ARRAY_ELEM_SIZE(elem) * static_cast<s32>(i))
+
+// Convenience wrappers
+#define PPCSTATE_OFF_GPR(i) PPCSTATE_OFF_ARRAY(gpr, i)
+#define PPCSTATE_OFF_CR(i)  PPCSTATE_OFF_ARRAY(cr.fields, i)
+#define PPCSTATE_OFF_SR(i)  PPCSTATE_OFF_ARRAY(sr, i)
+#define PPCSTATE_OFF_SPR(i) PPCSTATE_OFF_ARRAY(spr, i)
+#define PPCSTATE_OFF_PS(i)  PPCSTATE_OFF_ARRAY(ps, i)
+
+// PairedSingle lanes
+#define PPCSTATE_OFF_PS0(i)                                                     \
+  (PPCSTATE_OFF_PS(i) +                                                         \
+   ([]() consteval {                                                            \
+     _Pragma("GCC diagnostic push")                                             \
+     _Pragma("GCC diagnostic ignored \"-Winvalid-offsetof\"")                   \
+     return static_cast<s32>(offsetof(PowerPC::PairedSingle, ps0));             \
+     _Pragma("GCC diagnostic pop")                                              \
+   }()))
+#define PPCSTATE_OFF_PS1(i)                                                     \
+  (PPCSTATE_OFF_PS(i) +                                                         \
+   ([]() consteval {                                                            \
+     _Pragma("GCC diagnostic push")                                             \
+     _Pragma("GCC diagnostic ignored \"-Winvalid-offsetof\"")                   \
+     return static_cast<s32>(offsetof(PowerPC::PairedSingle, ps1));             \
+     _Pragma("GCC diagnostic pop")                                              \
+   }()))
+
+// SPR sub-base and imm12-safe displacement
+#define PPCSTATE_SPR_BASE PPCSTATE_OFF_SPR(0)
+#define SPR_OFFSET(i)     (PPCSTATE_OFF_SPR(i) - PPCSTATE_SPR_BASE)
+
+// Range/alignment checks (constexpr-safe now)
+static_assert(SPR_OFFSET(1023) < 4096, "LDR/STR can't reach the last SPR with imm12");
+static_assert(PPCSTATE_OFF(xer_ca)    < 4096, "STRB can't store xer_ca!");
+static_assert(PPCSTATE_OFF(xer_so_ov) < 4096, "STRB can't store xer_so_ov!");
+static_assert((PPCSTATE_OFF_PS0(0) % 8) == 0, "VLDR/VSTR (64-bit) require 8-byte alignment");
+static_assert((PPCSTATE_OFF_PS1(0) % 8) == 0, "VLDR/VSTR (64-bit) require 8-byte alignment");
+
+/*
+SPR:
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+
+// Base offsetof helper
+#define STRUCT_OFF(type, elem) \
+  static_cast<u32>(reinterpret_cast<char*>(&reinterpret_cast<type*>(0)->elem) - \
+                   reinterpret_cast<char*>(reinterpret_cast<type*>(0)))
+
+// Offset of any member in PowerPCState relative to spr[0]
+#define PPCSTATE_OFF(elem) \
+  (static_cast<s32>(STRUCT_OFF(PowerPC::PowerPCState, elem)) - \
+   static_cast<s32>(STRUCT_OFF(PowerPC::PowerPCState, spr[0])))
+
+// Offset of an array element in PowerPCState relative to spr[0]
+#define PPCSTATE_OFF_ARRAY(elem, i) \
+  (static_cast<s32>(offsetof(PowerPC::PowerPCState, elem[0]) + \
+                    sizeof(PowerPC::PowerPCState::elem[0]) * (i)) - \
+   static_cast<s32>(offsetof(PowerPC::PowerPCState, spr[0])))
+
+// Convenience wrappers
+#define PPCSTATE_OFF_GPR(i) PPCSTATE_OFF_ARRAY(gpr, i)
+#define PPCSTATE_OFF_SR(i)  PPCSTATE_OFF_ARRAY(sr, i)
+#define PPCSTATE_OFF_SPR(i) PPCSTATE_OFF_ARRAY(spr, i)
+
+// PairedSingle lanes (ps0/ps1) relative to spr[0]
+#define PPCSTATE_OFF_PS0(i) \
+  (PPCSTATE_OFF_ARRAY(ps, i) + \
+   static_cast<s32>(offsetof(PowerPC::PairedSingle, ps0)))
+
+#define PPCSTATE_OFF_PS1(i) \
+  (PPCSTATE_OFF_ARRAY(ps, i) + \
+   static_cast<s32>(offsetof(PowerPC::PairedSingle, ps1)))
+
+// Range/alignment checks
+static_assert(PPCSTATE_OFF_SPR(1023) > -4096 && PPCSTATE_OFF_SPR(1023) < 4096,
+              "LDR can't reach all of the SPRs");
+
+static_assert(PPCSTATE_OFF_PS0(0) >= -1020 && PPCSTATE_OFF_PS0(0) <= 1020,
+              "VLDR can't reach all of the FPRs");
+
+static_assert((PPCSTATE_OFF_PS0(0) % 4) == 0,
+              "VLDR requires FPRs to be 4 byte aligned");
+
+#pragma GCC diagnostic pop*/
+
+extern "C" void JitArmTrampoline(JitBase& jit, u32 em_address);
+extern "C" void LogRegHelper(const char* msg, u32 value);
+
+class HostDisassembler;
+
+class JitArm : public JitBase, public ArmGen::ARMCodeBlock, public CommonAsmRoutinesBase
 {
-private:
-	JitArmBlockCache blocks;
-
-	JitArmAsmRoutineManager asm_routines;
-
-	// TODO: Make arm specific versions of these, shouldn't be too hard to
-	// make it so we allocate some space at the start(?) of code generation
-	// and keep the registers in a cache. Will burn this bridge when we get to
-	// it.
-	ArmRegCache gpr;
-	ArmFPRCache fpr;
-
-	PPCAnalyst::CodeBuffer code_buffer;
-
-	// The key is the backpatch flags
-	std::map<u32, BackPatchInfo> m_backpatch_info;
-
-	void DoDownCount();
-
-	void Helper_UpdateCR1(ArmGen::ARMReg fpscr, ArmGen::ARMReg temp);
-
-	void SetFPException(ArmGen::ARMReg Reg, u32 Exception);
-
-	ArmGen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set);
-
-	void BeginTimeProfile(JitBlock* b);
-	void EndTimeProfile(JitBlock* b);
-
-	bool BackPatch(SContext* ctx);
-	bool DisasmLoadStore(const u8* ptr, u32* flags, ArmGen::ARMReg* rD, ArmGen::ARMReg* V1);
-	// Initializes the information that backpatching needs
-	// This is required so we know the backpatch routine sizes and trouble offsets
-	void InitBackpatch();
-
-	// Returns the trouble instruction offset
-	// Zero if it isn't a fastmem routine
-	u32 EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, bool fastmem, bool do_padding, ArmGen::ARMReg RS, ArmGen::ARMReg V1 = ArmGen::ARMReg::INVALID_REG);
-
 public:
-	JitArm() : code_buffer(32000) {}
-	~JitArm() {}
+	explicit JitArm(Core::System& system);
+
+	~JitArm() override;
 
 	void Init();
 	void Shutdown();
 
 	// Jit!
 
-	void Jit(u32 em_address);
-	const u8* DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlock *b);
+  void Jit(u32 em_address) override;
+  void Jit(u32 em_address, bool clear_cache_and_retry_on_failure);
+	//bool DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlock *b);
+	bool DoJit(u32 em_address, JitBlock *b, u32 nextPC);
+
+	void EraseSingleBlock(const JitBlock& block) override;
+	std::vector<MemoryStats> GetMemoryStats() const override;
+
+	std::size_t DisassembleNearCode(const JitBlock& block, std::ostream& stream) const override;
+	std::size_t DisassembleFarCode(const JitBlock& block, std::ostream& stream) const override;
+
+	// Finds a free memory region
+  // Returns false if no free memory region can be found.
+  bool SetEmitterStateToFreeCodeRegion();
 
 	JitBaseBlockCache *GetBlockCache() { return &blocks; }
 
@@ -94,28 +187,49 @@ public:
 
 	void ClearCache();
 
-	CommonAsmRoutinesBase *GetAsmRoutines()
-	{
-		return &asm_routines;
-	}
-
-	const char *GetName()
+	const char *GetName() const
 	{
 		return "JITARM";
 	}
+
+	CommonAsmRoutinesBase* GetAsmRoutines() override { return this; }
 
 	// Run!
 	void Run();
 	void SingleStep();
 
-	// Utilities for use by opcodes
+	// Utilities for safer jumping > 32mb
+	void SafeB(const void* fnptr);
+	void SafeSetJumpTarget(const ArmGen::FixupBranch& branch);
 
-	void WriteExit(u32 destination);
+	// Exits
+	void
+  WriteExit(u32 destination, bool LK = false, u32 exit_address_after_return = 0,
+            ArmGen::ARMReg exit_address_after_return_reg = ArmGen::ARMReg::INVALID_REG);
+  void
+  WriteExit(ArmGen::ARMReg dest, bool LK = false, u32 exit_address_after_return = 0,
+            ArmGen::ARMReg exit_address_after_return_reg = ArmGen::ARMReg::INVALID_REG);
 	void WriteExitDestInR(ArmGen::ARMReg Reg);
 	void WriteRfiExitDestInR(ArmGen::ARMReg Reg);
-	void WriteExceptionExit();
+	void WriteConditionalExceptionExit(int exception, u32 increment_sp_on_exit = 0);
+	void WriteConditionalExceptionExit(int exception, ArmGen::ARMReg temp_gpr, ArmGen::ARMReg /* temp_fpr */,
+                                           u32 increment_sp_on_exit);
+	void FakeLKExit(u32 exit_address_after_return, ArmGen::ARMReg exit_address_after_return_reg);
+  void WriteExceptionExit(u32 destination, bool only_external = false,
+		bool always_exception = false);
+	void WriteExceptionExit(ArmGen::ARMReg dest, bool only_external = false,
+			bool always_exception = false);
+	void WriteBLRExit(ArmGen::ARMReg dest);
 	void WriteCallInterpreter(UGeckoInstruction _inst);
 	void Cleanup();
+
+	void FreeRanges();
+	void GenerateAsmAndResetFreeMemoryRanges();
+
+	// AsmRoutines
+  void GenerateAsm();
+  void GenerateCommonAsm();
+	void EmitUpdateMembase();
 
 	void ComputeRC(ArmGen::ARMReg value, int cr = 0);
 	void ComputeRC(s32 value, int cr);
@@ -124,11 +238,15 @@ public:
 	void ComputeCarry(bool Carry);
 	void GetCarryAndClear(ArmGen::ARMReg reg);
 	void FinalizeCarry(ArmGen::ARMReg reg);
+	void FlushCarry();
 
 	void SafeStoreFromReg(s32 dest, u32 value, s32 offsetReg, int accessSize, s32 offset);
 	void SafeLoadToReg(ArmGen::ARMReg dest, s32 addr, s32 offsetReg, int accessSize, s32 offset, bool signExtend, bool reverse, bool update);
 
+	void CompileInstruction(PPCAnalyst::CodeOp& op);
+
 	// OPCODES
+	using Instruction = void (JitArm::*)(UGeckoInstruction);
 	void FallBackToInterpreter(UGeckoInstruction _inst);
 	void DoNothing(UGeckoInstruction _inst);
 	void HLEFunction(UGeckoInstruction _inst);
@@ -245,4 +363,131 @@ public:
 	void psq_lx(UGeckoInstruction _inst);
 	void psq_st(UGeckoInstruction _inst);
 	void psq_stx(UGeckoInstruction _inst);
+
+	template <bool condition>
+	void WriteBranchWatch(u32 origin, u32 destination, UGeckoInstruction inst,
+                              ArmGen::ARMReg reg_a, ArmGen::ARMReg reg_b,
+                              BitSet32 /*gpr_caller_save*/, BitSet32 /*fpr_caller_save*/);
+
+	void MMIOWriteRegToAddr(Core::System& system, MMIO::Mapping* mmio,
+                        ArmGen::ARMXEmitter* emit,
+                        ArmGen::ARMReg src_reg, u32 address, u32 flags);
+
+	void LogRegFromJIT(const char* msg, ArmGen::ARMReg reg = ArmGen::INVALID_REG);
+	void LogNumFromJIT(const char* msg, u32 value = -1);
+
+protected:
+	void SetBlockLinkingEnabled(bool enabled);
+	void SetOptimizationEnabled(bool enabled);
+
+  // Simple functions to switch between near and far code emitting
+	void SwitchToFarCode()
+	{
+		// Save current (near) emitter state into m_near_code
+		m_near_code.SetCodePtr(GetWritableCodePtr(),
+													 GetWritableCodeEnd(),
+													 HasWriteFailed());
+
+		// Switch emitter to the far buffer state
+		SetCodePtr(m_far_code.GetWritableCodePtr(),
+							 m_far_code.GetWritableCodeEnd(),
+							 m_far_code.HasWriteFailed());
+
+		m_in_far_code = true;
+	}
+
+	void SwitchToNearCode()
+	{
+		// Save current (far) emitter state back into m_far_code
+		m_far_code.SetCodePtr(GetWritableCodePtr(),
+													GetWritableCodeEnd(),
+													HasWriteFailed());
+
+		// Restore emitter to the saved near buffer state
+		SetCodePtr(m_near_code.GetWritableCodePtr(),
+							 m_near_code.GetWritableCodeEnd(),
+							 m_near_code.HasWriteFailed());
+
+		m_in_far_code = false;
+	}
+
+  bool IsInFarCode() const { return m_in_far_code; }
+
+	void DoDownCount();
+	void ResetStack();
+	void IntializeSpeculativeConstants();
+	void MSRUpdated(ArmGen::ARMReg msr);
+
+	void Helper_UpdateCR1(ArmGen::ARMReg fpscr, ArmGen::ARMReg temp);
+
+	void SetFPException(ArmGen::ARMReg Reg, u32 Exception);
+
+	ArmGen::FixupBranch JumpIfCRFieldBit(int field, int bit, bool jump_if_set);
+
+	void BeginTimeProfile(JitBlock* b);
+	void EndTimeProfile(JitBlock* b);
+
+	bool BackPatch(SContext* ctx);
+	bool DisasmLoadStore(const u8* ptr, u32* flags, ArmGen::ARMReg* rD, ArmGen::ARMReg* V1);
+	// Initializes the information that backpatching needs
+	// This is required so we know the backpatch routine sizes and trouble offsets
+	void InitBackpatch();
+
+	// This enum is used for selecting an implementation of EmitBackpatchRoutine.
+  enum class MemAccessMode
+  {
+    // Always calls the slow C++ code. For performance reasons, should generally only be used if
+    // the guest address is known in advance and IsOptimizableRAMAddress returns false for it.
+    AlwaysSlowAccess,
+    // Only emits fast access code. Must only be used if the guest address is known in advance
+    // and IsOptimizableRAMAddress returns true for it, otherwise Dolphin will likely crash!
+    AlwaysFastAccess,
+    // Best in most cases. If backpatching is possible (!emitting_routine && jo.fastmem):
+    // Tries to run fast access code, and if that fails, uses backpatching to replace the code
+    // with a call to the slow C++ code. Otherwise: Checks whether the fast access code will work,
+    // then branches to either the fast access code or the slow C++ code.
+    Auto,
+  };
+
+	// Returns the trouble instruction offset
+	// Zero if it isn't a fastmem routine
+	u32 EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, MemAccessMode mode, bool do_padding,
+		ArmGen::ARMReg RS, ArmGen::ARMReg V1 = ArmGen::ARMReg::INVALID_REG);
+
+	struct FastmemArea
+	{
+		const u8* fast_access_code;
+		const u8* slow_access_code;
+	};
+
+	JitArmBlockCache blocks{*this};
+	//JitArmBlockCache blocks;
+
+	// <Fast path fault location, slow path handler location>
+	std::map<const u8*, FastmemArea> m_fault_to_handler{};
+
+	// TODO: Make arm specific versions of these, shouldn't be too hard to
+	// make it so we allocate some space at the start(?) of code generation
+	// and keep the registers in a cache. Will burn this bridge when we get to
+	// it.
+	ArmRegCache gpr;
+	ArmFPRCache fpr;
+
+	const u8* m_increment_profile_counter;
+
+	// The key is the backpatch flags
+	std::map<u32, BackPatchInfo> m_backpatch_info;
+
+	// Backed up when we switch to far code.
+	ArmGen::ARMCodeBlock m_near_code;
+	ArmGen::ARMCodeBlock m_far_code;
+	u8* m_near_code_end = nullptr;
+  bool m_near_code_write_failed = false;
+	bool m_in_far_code = false;
+
+	// Free‑range set for that buffer
+	HyoutaUtilities::RangeSizeSet<u8*> m_free_ranges_near;
+	HyoutaUtilities::RangeSizeSet<u8*> m_free_ranges_far;
+
+  std::unique_ptr<HostDisassembler> m_disassembler;
 };

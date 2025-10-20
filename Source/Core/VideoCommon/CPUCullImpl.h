@@ -31,6 +31,10 @@
 #define ATTR_TARGET
 #endif
 
+#ifdef _M_ARM_32
+#include "CPUCullImpl_ARMv7.h"
+#endif
+
 namespace VECTOR_NAMESPACE
 {
 #if defined(USE_SSE)

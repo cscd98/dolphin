@@ -6,31 +6,15 @@
 #include "Core/PowerPC/JitArm32/Jit.h"
 #include "Core/PowerPC/JitArm32/JitArm_Tables.h"
 
-// Should be moved in to the Jit class
-typedef void (JitArm::*_Instruction) (UGeckoInstruction instCode);
-
-static _Instruction dynaOpTable[64];
-static _Instruction dynaOpTable4[1024];
-static _Instruction dynaOpTable19[1024];
-static _Instruction dynaOpTable31[1024];
-static _Instruction dynaOpTable59[32];
-static _Instruction dynaOpTable63[1024];
-
-void JitArm::DynaRunTable4(UGeckoInstruction _inst)  {(this->*dynaOpTable4 [_inst.SUBOP10])(_inst);}
-void JitArm::DynaRunTable19(UGeckoInstruction _inst) {(this->*dynaOpTable19[_inst.SUBOP10])(_inst);}
-void JitArm::DynaRunTable31(UGeckoInstruction _inst) {(this->*dynaOpTable31[_inst.SUBOP10])(_inst);}
-void JitArm::DynaRunTable59(UGeckoInstruction _inst) {(this->*dynaOpTable59[_inst.SUBOP5 ])(_inst);}
-void JitArm::DynaRunTable63(UGeckoInstruction _inst) {(this->*dynaOpTable63[_inst.SUBOP10])(_inst);}
-
-struct GekkoOPTemplate
+namespace
 {
-	int opcode;
-	_Instruction Inst;
-	//GekkoOPInfo opinfo; // Doesn't need opinfo, Interpreter fills it out
+struct JitArmOpTemplate
+{
+  u32 opcode;
+  JitArm::Instruction fn;
 };
 
-static GekkoOPTemplate primarytable[] =
-{
+constexpr std::array<JitArmOpTemplate, 54> s_primary_table{{
 	{4,  &JitArm::DynaRunTable4},         // RunTable4
 	{19, &JitArm::DynaRunTable19},        // RunTable19
 	{31, &JitArm::DynaRunTable31},        // RunTable31
@@ -98,10 +82,10 @@ static GekkoOPTemplate primarytable[] =
 	{61, &JitArm::psq_st},                // psq_stu
 
 	//missing: 0, 1, 2, 5, 6, 9, 22, 30, 62, 58
-};
+}};
 
-static GekkoOPTemplate table4[] =
-{    //SUBOP10
+constexpr std::array<JitArmOpTemplate, 13> s_table4{{
+	//SUBOP10
 	{0,    &JitArm::FallBackToInterpreter}, // ps_cmpu0
 	{32,   &JitArm::FallBackToInterpreter}, // ps_cmpo0
 	{40,   &JitArm::ps_neg},                // ps_neg
@@ -114,12 +98,10 @@ static GekkoOPTemplate table4[] =
 	{560,  &JitArm::ps_merge01},            // ps_merge01
 	{592,  &JitArm::ps_merge10},            // ps_merge10
 	{624,  &JitArm::ps_merge11},            // ps_merge11
-
 	{1014, &JitArm::FallBackToInterpreter}, // dcbz_l
-};
+}};
 
-static GekkoOPTemplate table4_2[] =
-{
+constexpr std::array<JitArmOpTemplate, 17> s_table4_2{{
 	{10, &JitArm::ps_sum0},   // ps_sum0
 	{11, &JitArm::ps_sum1},   // ps_sum1
 	{12, &JitArm::ps_muls0},  // ps_muls0
@@ -137,19 +119,17 @@ static GekkoOPTemplate table4_2[] =
 	{29, &JitArm::ps_madd},   // ps_madd
 	{30, &JitArm::ps_nmsub},  // ps_nmsub
 	{31, &JitArm::ps_nmadd},  // ps_nmadd
-};
+}};
 
 
-static GekkoOPTemplate table4_3[] =
-{
+constexpr std::array<JitArmOpTemplate, 4> s_table4_3{{
 	{6,  &JitArm::psq_lx},  // psq_lx
 	{7,  &JitArm::psq_stx}, // psq_stx
 	{38, &JitArm::psq_lx},  // psq_lux
 	{39, &JitArm::psq_stx}, // psq_stux
-};
+}};
 
-static GekkoOPTemplate table19[] =
-{
+constexpr std::array<JitArmOpTemplate, 14> s_table19{{
 	{528, &JitArm::bcctrx},    // bcctrx
 	{16,  &JitArm::bclrx},     // bclrx
 	{257, &JitArm::FallBackToInterpreter},     // crand
@@ -166,11 +146,10 @@ static GekkoOPTemplate table19[] =
 
 	{50,  &JitArm::rfi},       // rfi
 	{18,  &JitArm::Break},     // rfid
-};
+}};
 
 
-static GekkoOPTemplate table31[] =
-{
+constexpr std::array<JitArmOpTemplate, 108> s_table31{{
 	{266,  &JitArm::arith},                 // addx
 	{778,  &JitArm::arith},                 // addox
 	{10,   &JitArm::arith},                 // addcx
@@ -311,10 +290,9 @@ static GekkoOPTemplate table31[] =
 	{306, &JitArm::FallBackToInterpreter},  // tlbie
 	{370, &JitArm::FallBackToInterpreter},  // tlbia
 	{566, &JitArm::DoNothing},              // tlbsync
-};
+}};
 
-static GekkoOPTemplate table59[] =
-{
+constexpr std::array<JitArmOpTemplate, 9> s_table59{{
 	{18, &JitArm::FallBackToInterpreter},  // fdivsx
 	{20, &JitArm::fsubsx},                 // fsubsx
 	{21, &JitArm::faddsx},                 // faddsx
@@ -325,10 +303,9 @@ static GekkoOPTemplate table59[] =
 	{29, &JitArm::fmaddsx},                // fmaddsx
 	{30, &JitArm::FallBackToInterpreter},  // fnmsubsx
 	{31, &JitArm::fnmaddsx},               // fnmaddsx
-};
+}};
 
-static GekkoOPTemplate table63[] =
-{
+constexpr std::array<JitArmOpTemplate, 15> s_table63{{
 	{264, &JitArm::fabsx},                 // fabsx
 	{32,  &JitArm::FallBackToInterpreter}, // fcmpo
 	{0,   &JitArm::FallBackToInterpreter}, // fcmpu
@@ -345,10 +322,9 @@ static GekkoOPTemplate table63[] =
 	{38,  &JitArm::FallBackToInterpreter}, // mtfsb1x
 	{134, &JitArm::FallBackToInterpreter}, // mtfsfix
 	{711, &JitArm::FallBackToInterpreter}, // mtfsfx
-};
+}};
 
-static GekkoOPTemplate table63_2[] =
-{
+constexpr std::array<JitArmOpTemplate, 11> s_table63_2{{
 	{18, &JitArm::FallBackToInterpreter}, // fdivx
 	{20, &JitArm::fsubx},                 // fsubx
 	{21, &JitArm::faddx},                 // faddx
@@ -360,124 +336,164 @@ static GekkoOPTemplate table63_2[] =
 	{29, &JitArm::fmaddx},                // fmaddx
 	{30, &JitArm::FallBackToInterpreter}, // fnmsubx
 	{31, &JitArm::fnmaddx},               // fnmaddx
-};
+}};
 
+constexpr std::array<JitArm::Instruction, 64> s_dyna_op_table = []() consteval {
+  std::array<JitArm::Instruction, 64> table{};
+  table.fill(&JitArm::FallBackToInterpreter);
 
-namespace JitArmTables
+  for (auto& tpl : s_primary_table)
+  {
+    ASSERT(table[tpl.opcode] == &JitArm::FallBackToInterpreter);
+    table[tpl.opcode] = tpl.fn;
+  }
+
+  return table;
+}();
+
+constexpr std::array<JitArm::Instruction, 1024> s_dyna_op_table4 = []() consteval {
+  std::array<JitArm::Instruction, 1024> table{};
+  table.fill(&JitArm::FallBackToInterpreter);
+
+  for (u32 i = 0; i < 32; i++)
+  {
+    const u32 fill = i << 5;
+    for (const auto& tpl : s_table4_2)
+    {
+      const u32 op = fill + tpl.opcode;
+      ASSERT(table[op] == &JitArm::FallBackToInterpreter);
+      table[op] = tpl.fn;
+    }
+  }
+
+  for (u32 i = 0; i < 16; i++)
+  {
+    const u32 fill = i << 6;
+    for (const auto& tpl : s_table4_3)
+    {
+      const u32 op = fill + tpl.opcode;
+      ASSERT(table[op] == &JitArm::FallBackToInterpreter);
+      table[op] = tpl.fn;
+    }
+  }
+
+  for (const auto& tpl : s_table4)
+  {
+    const u32 op = tpl.opcode;
+    ASSERT(table[op] == &JitArm::FallBackToInterpreter);
+    table[op] = tpl.fn;
+  }
+
+  return table;
+}();
+
+constexpr std::array<JitArm::Instruction, 1024> s_dyna_op_table19 = []() consteval {
+  std::array<JitArm::Instruction, 1024> table{};
+  table.fill(&JitArm::FallBackToInterpreter);
+
+  for (const auto& tpl : s_table19)
+  {
+    ASSERT(table[tpl.opcode] == &JitArm::FallBackToInterpreter);
+    table[tpl.opcode] = tpl.fn;
+  }
+
+  return table;
+}();
+
+constexpr std::array<JitArm::Instruction, 1024> s_dyna_op_table31 = []() consteval {
+  std::array<JitArm::Instruction, 1024> table{};
+  table.fill(&JitArm::FallBackToInterpreter);
+
+  for (const auto& tpl : s_table31)
+  {
+    ASSERT(table[tpl.opcode] == &JitArm::FallBackToInterpreter);
+    table[tpl.opcode] = tpl.fn;
+  }
+
+  return table;
+}();
+
+constexpr std::array<JitArm::Instruction, 32> s_dyna_op_table59 = []() consteval {
+  std::array<JitArm::Instruction, 32> table{};
+  table.fill(&JitArm::FallBackToInterpreter);
+
+  for (const auto& tpl : s_table59)
+  {
+    ASSERT(table[tpl.opcode] == &JitArm::FallBackToInterpreter);
+    table[tpl.opcode] = tpl.fn;
+  }
+
+  return table;
+}();
+
+constexpr std::array<JitArm::Instruction, 1024> s_dyna_op_table63 = []() consteval {
+  std::array<JitArm::Instruction, 1024> table{};
+  table.fill(&JitArm::FallBackToInterpreter);
+
+  for (const auto& tpl : s_table63)
+  {
+    ASSERT(table[tpl.opcode] == &JitArm::FallBackToInterpreter);
+    table[tpl.opcode] = tpl.fn;
+  }
+
+  for (u32 i = 0; i < 32; i++)
+  {
+    const u32 fill = i << 5;
+    for (const auto& tpl : s_table63_2)
+    {
+      const u32 op = fill + tpl.opcode;
+      ASSERT(table[op] == &JitArm::FallBackToInterpreter);
+      table[op] = tpl.fn;
+    }
+  }
+
+  return table;
+}();
+
+}  // Anonymous namespace
+
+void JitArm::DynaRunTable4(UGeckoInstruction inst)
 {
-
-void CompileInstruction(PPCAnalyst::CodeOp & op)
-{
-	JitArm *jitarm = (JitArm *)jit;
-	(jitarm->*dynaOpTable[op.inst.OPCD])(op.inst);
-	GekkoOPInfo *info = op.opinfo;
-
-	if (info)
-	{
-#ifdef OPLOG
-		if (!strcmp(info->opname, OP_TO_LOG)) // "mcrfs"
-		{
-			rsplocations.push_back(jit.js.compilerPC);
-		}
-#endif
-		info->compileCount++;
-		info->lastUse = jit->js.compilerPC;
-	}
+  (this->*s_dyna_op_table4[inst.SUBOP10])(inst);
 }
 
-void InitTables()
+void JitArm::DynaRunTable19(UGeckoInstruction inst)
 {
-	// once initialized, tables are read-only
-	static bool initialized = false;
-	if (initialized)
-		return;
-
-	//clear
-	for (auto& tpl : dynaOpTable)
-	{
-		tpl = &JitArm::FallBackToInterpreter;
-	}
-
-	for (int i = 0; i < 32; i++)
-	{
-		dynaOpTable59[i] = &JitArm::FallBackToInterpreter;
-	}
-
-	for (int i = 0; i < 1024; i++)
-	{
-		dynaOpTable4 [i] = &JitArm::FallBackToInterpreter;
-		dynaOpTable19[i] = &JitArm::FallBackToInterpreter;
-		dynaOpTable31[i] = &JitArm::FallBackToInterpreter;
-		dynaOpTable63[i] = &JitArm::FallBackToInterpreter;
-	}
-
-	for (int i = 0; i < (int)(sizeof(primarytable) / sizeof(GekkoOPTemplate)); i++)
-	{
-		dynaOpTable[primarytable[i].opcode] = primarytable[i].Inst;
-	}
-
-	for (int i = 0; i < 32; i++)
-	{
-		int fill = i << 5;
-		for (int j = 0; j < (int)(sizeof(table4_2) / sizeof(GekkoOPTemplate)); j++)
-		{
-			int op = fill+table4_2[j].opcode;
-			dynaOpTable4[op] = table4_2[j].Inst;
-		}
-	}
-
-	for (int i = 0; i < 16; i++)
-	{
-		int fill = i << 6;
-		for (int j = 0; j < (int)(sizeof(table4_3) / sizeof(GekkoOPTemplate)); j++)
-		{
-			int op = fill+table4_3[j].opcode;
-			dynaOpTable4[op] = table4_3[j].Inst;
-		}
-	}
-
-	for (int i = 0; i < (int)(sizeof(table4) / sizeof(GekkoOPTemplate)); i++)
-	{
-		int op = table4[i].opcode;
-		dynaOpTable4[op] = table4[i].Inst;
-	}
-
-	for (int i = 0; i < (int)(sizeof(table31) / sizeof(GekkoOPTemplate)); i++)
-	{
-		int op = table31[i].opcode;
-		dynaOpTable31[op] = table31[i].Inst;
-	}
-
-	for (int i = 0; i < (int)(sizeof(table19) / sizeof(GekkoOPTemplate)); i++)
-	{
-		int op = table19[i].opcode;
-		dynaOpTable19[op] = table19[i].Inst;
-	}
-
-	for (int i = 0; i < (int)(sizeof(table59) / sizeof(GekkoOPTemplate)); i++)
-	{
-		int op = table59[i].opcode;
-		dynaOpTable59[op] = table59[i].Inst;
-	}
-
-	for (int i = 0; i < (int)(sizeof(table63) / sizeof(GekkoOPTemplate)); i++)
-	{
-		int op = table63[i].opcode;
-		dynaOpTable63[op] = table63[i].Inst;
-	}
-
-	for (int i = 0; i < 32; i++)
-	{
-		int fill = i << 5;
-		for (int j = 0; j < (int)(sizeof(table63_2) / sizeof(GekkoOPTemplate)); j++)
-		{
-			int op = fill + table63_2[j].opcode;
-			dynaOpTable63[op] = table63_2[j].Inst;
-		}
-	}
-
-	initialized = true;
-
+  (this->*s_dyna_op_table19[inst.SUBOP10])(inst);
 }
 
-}  // namespace
+void JitArm::DynaRunTable31(UGeckoInstruction inst)
+{
+  (this->*s_dyna_op_table31[inst.SUBOP10])(inst);
+}
+
+void JitArm::DynaRunTable59(UGeckoInstruction inst)
+{
+  (this->*s_dyna_op_table59[inst.SUBOP5])(inst);
+}
+
+void JitArm::DynaRunTable63(UGeckoInstruction inst)
+{
+  (this->*s_dyna_op_table63[inst.SUBOP10])(inst);
+}
+
+void JitArm::CompileInstruction(PPCAnalyst::CodeOp& op)
+{
+  (this->*s_dyna_op_table[op.inst.OPCD])(op.inst);
+
+  PPCTables::CountInstructionCompile(op.opinfo, js.compilerPC);
+
+	// Print the instruction address and mnemonic
+	const GekkoOPInfo *info = op.opinfo;
+
+	char msg[128];
+	snprintf(msg, sizeof(msg), "JIT: Compile Instruction: PC=%08x opname=%-8s inst.hex=%08x branchto=%08x isLastInstruction=%d",
+		op.address,
+		info->opname,
+		op.inst.hex,
+		op.branchTo,
+		js.isLastInstruction);
+	LogNumFromJIT(msg);
+
+	fflush(stdout);
+}

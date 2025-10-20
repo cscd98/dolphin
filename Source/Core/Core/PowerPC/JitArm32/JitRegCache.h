@@ -20,6 +20,15 @@
 // it
 // So we have R14, R12, R11, R10 to work with instructions
 
+// Dedicated host registers
+
+// memory base register
+constexpr ArmGen::ARMReg MEM_REG = ArmGen::ARMReg::R8;
+// ppcState pointer
+constexpr ArmGen::ARMReg PPC_REG = ArmGen::ARMReg::R9;
+// PC register when calling the dispatcher
+constexpr ArmGen::ARMReg DISPATCHER_PC = ArmGen::ARMReg::R7;
+
 enum RegType
 {
 	REG_NOTLOADED = 0,
@@ -40,6 +49,7 @@ class OpArg
 	RegType m_type; // store type
 	u8 m_reg; // index to register
 	u32 m_value; // IMM value
+	bool m_dirty = false;
 
 	public:
 	OpArg()
@@ -81,6 +91,8 @@ class OpArg
 	{
 		m_type = REG_NOTLOADED;
 	}
+	void SetDirty(bool dirty) { m_dirty = dirty; }
+  bool IsDirty() const { return m_dirty; }
 };
 
 struct JRCPPC
@@ -98,6 +110,7 @@ struct JRCReg
 class ArmRegCache
 {
 private:
+	// WEBOS TODO: replace with std::vector<OpArg> m_guest_registers;
 	OpArg regs[32];
 	JRCPPC ArmCRegs[ARMREGS];
 	JRCReg ArmRegs[ARMREGS]; // Four registers remaining
@@ -122,19 +135,80 @@ public:
 	~ArmRegCache() {}
 
 	void Init(ArmGen::ARMXEmitter *emitter);
-	void Start(PPCAnalyst::BlockRegStats &stats);
+	virtual void Start(PPCAnalyst::BlockRegStats& stats) {}
+	void ResetRegisters(BitSet32 regs_to_reset);
+	void ResetCRRegisters(BitSet8 regs);
 
 	ArmGen::ARMReg GetReg(bool AutoLock = true); // Return a ARM register we can use.
+
+	class ScopedARMReg
+  {
+  public:
+    inline ScopedARMReg() = default;
+    ScopedARMReg(const ScopedARMReg&) = delete;
+    explicit inline ScopedARMReg(ArmRegCache& cache) : m_reg(cache.GetReg()), m_gpr(&cache) {}
+    inline ScopedARMReg(ArmGen::ARMReg reg) : m_reg(reg) {}
+    inline ScopedARMReg(ScopedARMReg&& scoped_reg) { *this = std::move(scoped_reg); }
+    inline ~ScopedARMReg() { Unlock(); }
+
+    inline ScopedARMReg& operator=(const ScopedARMReg&) = delete;
+    inline ScopedARMReg& operator=(ArmGen::ARMReg reg)
+    {
+      Unlock();
+      m_reg = reg;
+      return *this;
+    }
+    inline ScopedARMReg& operator=(ScopedARMReg&& scoped_reg)
+    {
+      // Taking ownership of an existing scoped register, no need to release.
+      m_reg = scoped_reg.m_reg;
+      m_gpr = scoped_reg.m_gpr;
+      scoped_reg.Invalidate();
+      return *this;
+    }
+
+    inline ArmGen::ARMReg GetReg() const { return m_reg; }
+    inline operator ArmGen::ARMReg() const { return GetReg(); }
+    inline void Unlock()
+    {
+      // Only unlock the register if GPR is set.
+      if (m_gpr != nullptr)
+      {
+        m_gpr->Unlock(m_reg);
+      }
+      Invalidate();
+    }
+
+  private:
+    inline void Invalidate()
+    {
+      m_reg = ArmGen::ARMReg::INVALID_REG;
+      m_gpr = nullptr;
+    }
+
+    ArmGen::ARMReg m_reg = ArmGen::ARMReg::INVALID_REG;
+    ArmRegCache* m_gpr = nullptr;
+  };
+
+  // Returns a temporary register
+  // Unlocking is implicitly handled through RAII
+  inline ScopedARMReg GetScopedReg() { return ScopedARMReg(*this); }
+
 	void Unlock(ArmGen::ARMReg R0, ArmGen::ARMReg R1 = ArmGen::INVALID_REG, ArmGen::ARMReg R2 = ArmGen::INVALID_REG, ArmGen::ARMReg R3 = ArmGen::INVALID_REG);
 	void Flush(FlushMode mode = FLUSH_ALL);
 	ArmGen::ARMReg R(u32 preg); // Returns a cached register
 	bool IsImm(u32 preg) { return regs[preg].GetType() == REG_IMM; }
 	u32 GetImm(u32 preg) { return regs[preg].GetImm(); }
-	void SetImmediate(u32 preg, u32 imm);
+	void SetImmediate(u32 preg, u32 imm, bool dirty = true);
 
 	// Public function doesn't kill immediates
 	// In reality when you call R(u32) it'll bind an immediate there
 	void BindToRegister(u32 preg, bool doLoad = true);
 
 	void StoreFromRegister(u32 preg);
+
+	void Lock(ArmGen::ARMReg R0,
+          ArmGen::ARMReg R1 = ArmGen::ARMReg::INVALID_REG,
+          ArmGen::ARMReg R2 = ArmGen::ARMReg::INVALID_REG,
+          ArmGen::ARMReg R3 = ArmGen::ARMReg::INVALID_REG);
 };

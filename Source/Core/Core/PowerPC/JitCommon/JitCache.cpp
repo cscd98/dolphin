@@ -139,6 +139,16 @@ JitBlock* JitBaseBlockCache::AllocateBlock(u32 em_address)
   b.feature_flags = m_jit.m_ppc_state.feature_flags;
   b.linkData.clear();
   b.fast_block_map_index = 0;
+
+  // Debug logging
+  printf("AllocateBlock: em_address=0x%08x\n", em_address);
+  printf("  physical_address=0x%08x\n", physical_address);
+  printf("  effectiveAddress=0x%08x\n", b.effectiveAddress);
+  printf("  physicalAddress=0x%08x\n", b.physicalAddress);
+  printf("  feature_flags=0x%08x\n", b.feature_flags);
+  printf("  fast_block_map_index=%zu\n", b.fast_block_map_index);
+  fflush(stdout);
+
   return &b;
 }
 
@@ -146,6 +156,38 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
                                       const PPCAnalyst::CodeBlock& code_block,
                                       const PPCAnalyst::CodeBuffer& code_buffer)
 {
+  // Ensure symbol is declared once
+  const Common::Symbol* symbol2 = nullptr;
+  if (Common::JitRegister::IsEnabled())
+    symbol2 = m_jit.m_ppc_symbol_db.GetSymbolFromAddr(block.effectiveAddress);
+
+  // compute size exactly as callers did
+  u32 size = static_cast<u32>(reinterpret_cast<uintptr_t>(block.near_end) -
+                              reinterpret_cast<uintptr_t>(block.normalEntry));
+
+  // build formatted name via snprintf (avoid fmt here)
+  char namebuf[256];
+  if (symbol2 != nullptr)
+  {
+    snprintf(namebuf, sizeof(namebuf), "JIT_PPC_%s_%08x", symbol2->function_name.c_str(),
+            static_cast<unsigned int>(block.physicalAddress));
+  }
+  else
+  {
+    snprintf(namebuf, sizeof(namebuf), "JIT_PPC_%08x",
+            static_cast<unsigned int>(block.physicalAddress));
+  }
+
+  // Print values before Register
+  printf("Registering block:\n");
+  printf("  normalEntry     = %p\n", block.normalEntry);
+  printf("  near_end        = %p\n", block.near_end);
+  printf("  size            = %u\n", size);
+  printf("  symbol_name     = %s\n", symbol2 ? symbol2->function_name.c_str() : "(null)");
+  printf("  physicalAddress = 0x%08x\n", static_cast<unsigned int>(block.physicalAddress));
+  printf("  formatted_name  = %s\n", namebuf);
+  fflush(stdout);
+
   size_t index = FastLookupIndexForAddress(block.effectiveAddress, block.feature_flags);
   if (m_entry_points_ptr)
   {
@@ -191,14 +233,42 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
   if (Common::JitRegister::IsEnabled() &&
       (symbol = m_jit.m_ppc_symbol_db.GetSymbolFromAddr(block.effectiveAddress)) != nullptr)
   {
+    // Print values before Register
+    printf("Just before register call (1):\n");
+    printf("  normalEntry     = %p\n", block.normalEntry);
+    printf("  near_end        = %p\n", block.near_end);
+    printf("  size            = %u\n", size);
+    printf("  symbol_name     = %s\n", symbol ? symbol->function_name.c_str() : "(null)");
+    printf("  physicalAddress = 0x%08x\n", static_cast<unsigned int>(block.physicalAddress));
+    printf("  formatted_name  = %s\n", namebuf);
+    fflush(stdout);
+
     Common::JitRegister::Register(block.normalEntry, block.near_end - block.normalEntry,
                                   "JIT_PPC_{}_{:08x}", symbol->function_name,
                                   block.physicalAddress);
   }
   else
   {
-    Common::JitRegister::Register(block.normalEntry, block.near_end - block.normalEntry,
-                                  "JIT_PPC_{:08x}", block.physicalAddress);
+    // Print values before Register
+    printf("Just before register call (2):\n");
+    printf("  normalEntry     = %p\n", block.normalEntry);
+    printf("  near_end        = %p\n", block.near_end);
+    printf("  size            = %u\n", size);
+    printf("  symbol_name     = %s\n", symbol ? symbol->function_name.c_str() : "(null)");
+    printf("  physicalAddress = 0x%08x\n", static_cast<unsigned int>(block.physicalAddress));
+    printf("  formatted_name  = %s\n", namebuf);
+    fflush(stdout);
+
+    char buf[64];
+snprintf(buf, sizeof(buf), "JIT_PPC_%08x",
+         static_cast<unsigned int>(block.physicalAddress));
+
+Common::JitRegister::Register(block.normalEntry,
+                              static_cast<u32>(block.near_end - block.normalEntry),
+                              std::string(buf));
+
+    //Common::JitRegister::Register(block.normalEntry, block.near_end - block.normalEntry,
+    //                              "JIT_PPC_{:08x}", block.physicalAddress);
   }
 }
 

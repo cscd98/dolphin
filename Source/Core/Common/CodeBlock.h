@@ -51,6 +51,10 @@ public:
   // Call this before you generate any code.
   void AllocCodeSpace(size_t size)
   {
+    printf("Allocating %zu bytes of %s code space\n", size,
+           executable ? "executable" : "non-executable");
+    fflush(stdout);
+
     region_size = size;
     total_region_size = size;
     if constexpr (executable)

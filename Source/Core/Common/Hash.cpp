@@ -419,6 +419,11 @@ static u64 SetHash64Function(const u8* src, u32 len, u32 samples)
   {
     s_texture_hash_func = &GetMurmurHash3;
   }
+#if defined(_M_ARM_32)
+  // use GetMurmurHash3 regardless of CPU features on ARM32 (no CRC32 etc. extension?)
+  s_texture_hash_func = &GetMurmurHash3;
+#endif
+
   return s_texture_hash_func(src, len, samples);
 }
 

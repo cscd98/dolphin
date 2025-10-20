@@ -75,9 +75,8 @@ static const struct retro_core_option_v2_category option_cats[] = {
   #define CPU_CORE_DEFAULT "1" // PowerPC::CPUCore::JIT64
   #define CPU_CORE_JIT_ENTRY { "1", "JIT64 (Recommended)" },
 #elif defined(_M_ARM_32)
-  #define CPU_CORE_DEFAULT "5"  // PowerPC::CPUCore::CachedInterpreter
-  #define CPU_CORE_JIT_ENTRY
-//  #define CPU_CORE_JIT_ENTRY { "3", "JITARM (Recommended)" }, // PowerPC::CPUCore::JITARM
+  #define CPU_CORE_DEFAULT "3"  // 3 - PowerPC::CPUCore::JITARM
+  #define CPU_CORE_JIT_ENTRY { "3", "JITARM (Recommended)" }, // PowerPC::CPUCore::JITARM
 #elif defined(_M_ARM_64)
   #define CPU_CORE_DEFAULT "4" // PowerPC::CPUCore::JITARM64
   #define CPU_CORE_JIT_ENTRY { "4", "JITARM64 (Recommended)" },

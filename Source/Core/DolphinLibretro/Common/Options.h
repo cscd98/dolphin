@@ -103,8 +103,8 @@ inline std::string CPUCoreToString(PowerPC::CPUCore core)
     case PowerPC::CPUCore::JITARM64:
       return "JIT ARM64";
 #ifdef _M_ARM_32
-    //case PowerPC::CPUCore::JITARM:
-    //  return "JIT ARM32";
+    case PowerPC::CPUCore::JITARM:
+      return "JIT ARM32";
 #endif
   }
 

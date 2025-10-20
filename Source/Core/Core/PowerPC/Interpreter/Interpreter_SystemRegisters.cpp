@@ -99,6 +99,14 @@ void Interpreter::mtfsfx(Interpreter& interpreter, UGeckoInstruction inst)
 
 void Interpreter::mcrxr(Interpreter& interpreter, UGeckoInstruction inst)
 {
+  printf("mcrxr\n");
+  fflush(stdout);
+
+  printf("Interpreter at %p, m_ppc_state at %p\n",
+    static_cast<const void*>(&interpreter),
+    static_cast<const void*>(&interpreter.m_ppc_state));
+  fflush(stdout);
+
   auto& ppc_state = interpreter.m_ppc_state;
   ppc_state.cr.SetField(inst.CRFD, ppc_state.GetXER().Hex >> 28);
   ppc_state.xer_ca = 0;
@@ -605,6 +613,14 @@ void Interpreter::crxor(Interpreter& interpreter, UGeckoInstruction inst)
 
 void Interpreter::mcrf(Interpreter& interpreter, UGeckoInstruction inst)
 {
+  printf("mcrf\n");
+  fflush(stdout);
+
+  printf("Interpreter at %p, m_ppc_state at %p\n",
+    static_cast<const void*>(&interpreter),
+    static_cast<const void*>(&interpreter.m_ppc_state));
+  fflush(stdout);
+
   auto& ppc_state = interpreter.m_ppc_state;
   const u32 cr_f = ppc_state.cr.GetField(inst.CRFS);
   ppc_state.cr.SetField(inst.CRFD, cr_f);
@@ -619,6 +635,14 @@ void Interpreter::isync(Interpreter& interpreter, UGeckoInstruction inst)
 
 void Interpreter::mcrfs(Interpreter& interpreter, UGeckoInstruction inst)
 {
+  printf("mcrfs\n");
+  fflush(stdout);
+
+  printf("Interpreter at %p, m_ppc_state at %p\n",
+    static_cast<const void*>(&interpreter),
+    static_cast<const void*>(&interpreter.m_ppc_state));
+  fflush(stdout);
+
   auto& ppc_state = interpreter.m_ppc_state;
   const u32 shift = 4 * (7 - inst.CRFS);
   const u32 fpflags = (ppc_state.fpscr.Hex >> shift) & 0xF;

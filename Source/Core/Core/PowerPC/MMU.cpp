@@ -257,7 +257,9 @@ T MMU::ReadFromHardware(u32 em_address)
     return bswap(value);
   }
 
-  PanicAlertFmt("Unable to resolve read address {:x} PC {:x}", em_address, m_ppc_state.pc);
+  //PanicAlertFmt("Unable to resolve read address {:x} PC {:x}", em_address, m_ppc_state.pc);
+  PanicAlertFmt("Unable to resolve read address {:#010x} PC {:#010x}", em_address, m_ppc_state.pc);
+
   if (m_system.IsPauseOnPanicMode())
   {
     m_system.GetCPU().Break();

@@ -32,7 +32,7 @@
 
 #if defined(_M_X86) || defined(_M_X86_64)
 #define USE_SSE
-#elif defined(_M_ARM_64)
+#elif defined(_M_ARM_64) || defined(_M_ARM_32)
 #define USE_NEON
 #else
 #define NO_SIMD

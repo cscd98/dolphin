@@ -267,6 +267,14 @@ if(_M_ARM_64)
     ArmCPUDetect.cpp
     ArmFPURoundMode.cpp
   )
+elseif (_M_ARM_32) #ARMv7
+	target_sources(common PRIVATE
+		ArmEmitter.cpp
+    ArmEmitter.h
+    ArmCommon.h
+	  ArmCPUDetect.cpp
+	  GenericFPURoundMode.cpp
+  )
 else()
   if(_M_X86_64) #X86
     target_sources(common PRIVATE

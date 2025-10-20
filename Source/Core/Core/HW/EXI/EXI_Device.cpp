@@ -42,16 +42,23 @@ void IEXIDevice::ImmWrite(u32 data, u32 size)
 
 u32 IEXIDevice::ImmRead(u32 size)
 {
+  if (size == 0 || size > 4)
+  {
+    ERROR_LOG_FMT(EXPANSIONINTERFACE, "ImmRead called with invalid size {}", size);
+    size = std::min<u32>(size, 4);
+  }
+
   u32 result = 0;
   u32 position = 0;
   while (size--)
   {
     u8 byte = 0;
     TransferByte(byte);
-    result |= byte << (24 - (position++ * 8));
+    result |= static_cast<u32>(byte) << (24 - (position++ * 8));
   }
   return result;
 }
+
 
 void IEXIDevice::ImmReadWrite(u32& data, u32 size)
 {

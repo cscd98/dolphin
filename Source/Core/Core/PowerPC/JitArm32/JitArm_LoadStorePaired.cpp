@@ -11,7 +11,6 @@
 #include "Core/PowerPC/PPCTables.h"
 
 #include "Core/PowerPC/JitArm32/Jit.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 
 using namespace ArmGen;
@@ -29,7 +28,7 @@ void JitArm::psq_l(UGeckoInstruction inst)
 	bool update = inst.OPCD == 57;
 	s32 offset = inst.SIMM_12;
 
-	LDR(R11, R9, PPCSTATE_OFF(spr[SPR_GQR0 + inst.I]));
+	LDR(R11, PPC_REG, PPCSTATE_OFF_SPR(SPR_GQR0 + inst.I));
 	UBFX(R12, R11, 16, 3); // Type
 	LSL(R12, R12, 2);
 	UBFX(R11, R11, 24, 6); // Scale
@@ -52,12 +51,12 @@ void JitArm::psq_l(UGeckoInstruction inst)
 
 	if (update)
 		MOV(gpr.R(inst.RA), R10);
-	MOVI2R(R14, (u32)asm_routines.pairedLoadQuantized);
+	MOVI2R(R14, (u32)paired_load_quantized);
 	ADD(R14, R14, R12);
 	LDR(R14, R14, inst.W ? 8 * 4 : 0);
 
 	// Values returned in S0, S1
-	BL(R14); // Jump to the quantizer Load
+	BLX(R14); // Jump to the quantizer Load
 
 	ARMReg vD0 = fpr.R0(inst.RS, false);
 	ARMReg vD1 = fpr.R1(inst.RS, false);
@@ -80,7 +79,7 @@ void JitArm::psq_lx(UGeckoInstruction inst)
 
 	bool update = inst.SUBOP10 == 38;
 
-	LDR(R11, R9, PPCSTATE_OFF(spr[SPR_GQR0 + inst.Ix]));
+	LDR(R11, PPC_REG, PPCSTATE_OFF_SPR(SPR_GQR0 + inst.Ix));
 	UBFX(R12, R11, 16, 3); // Type
 	LSL(R12, R12, 2);
 	UBFX(R11, R11, 24, 6); // Scale
@@ -98,16 +97,16 @@ void JitArm::psq_lx(UGeckoInstruction inst)
 	if (update)
 		MOV(gpr.R(inst.RA), R10);
 
-	MOVI2R(R14, (u32)asm_routines.pairedLoadQuantized);
+	MOVI2R(R14, (u32)paired_load_quantized);
 	ADD(R14, R14, R12);
 	LDR(R14, R14, inst.Wx ? 8 * 4 : 0);
 
 	// Values returned in S0, S1
-	BL(R14); // Jump to the quantizer Load
+	BLX(R14); // Jump to the quantizer Load
 
 	ARMReg vD0 = fpr.R0(inst.RS, false);
 	ARMReg vD1 = fpr.R1(inst.RS, false);
-	LDR(R14, R9, PPCSTATE_OFF(Exceptions));
+	LDR(R14, PPC_REG, PPCSTATE_OFF(Exceptions));
 	CMP(R14, EXCEPTION_DSI);
 	SetCC(CC_NEQ);
 
@@ -132,7 +131,7 @@ void JitArm::psq_st(UGeckoInstruction inst)
 	bool update = inst.OPCD == 61;
 	s32 offset = inst.SIMM_12;
 
-	LDR(R11, R9, PPCSTATE_OFF(spr[SPR_GQR0 + inst.I]));
+	LDR(R11, PPC_REG, PPCSTATE_OFF_SPR(SPR_GQR0 + inst.I));
 	UBFX(R12, R11, 0, 3); // Type
 	LSL(R12, R12, 2);
 	UBFX(R11, R11, 8, 6); // Scale
@@ -155,7 +154,7 @@ void JitArm::psq_st(UGeckoInstruction inst)
 
 	if (update)
 		MOV(gpr.R(inst.RA), R10);
-	MOVI2R(R14, (u32)asm_routines.pairedStoreQuantized);
+	MOVI2R(R14, (u32)paired_store_quantized);
 	ADD(R14, R14, R12);
 	LDR(R14, R14, inst.W ? 8 * 4 : 0);
 
@@ -168,7 +167,7 @@ void JitArm::psq_st(UGeckoInstruction inst)
 		VCVT(S1, vD1, 0);
 	}
 	// floats passed through D0
-	BL(R14); // Jump to the quantizer Store
+	BLX(R14); // Jump to the quantizer Store
 }
 
 void JitArm::psq_stx(UGeckoInstruction inst)
@@ -183,7 +182,7 @@ void JitArm::psq_stx(UGeckoInstruction inst)
 
 	bool update = inst.SUBOP10 == 39;
 
-	LDR(R11, R9, PPCSTATE_OFF(spr[SPR_GQR0 + inst.I]));
+	LDR(R11, PPC_REG, PPCSTATE_OFF_SPR(SPR_GQR0 + inst.I));
 	UBFX(R12, R11, 0, 3); // Type
 	LSL(R12, R12, 2);
 	UBFX(R11, R11, 8, 6); // Scale
@@ -201,7 +200,7 @@ void JitArm::psq_stx(UGeckoInstruction inst)
 	if (update)
 		MOV(gpr.R(inst.RA), R10);
 
-	MOVI2R(R14, (u32)asm_routines.pairedStoreQuantized);
+	MOVI2R(R14, (u32)paired_store_quantized);
 	ADD(R14, R14, R12);
 	LDR(R14, R14, inst.W ? 8 * 4 : 0);
 
@@ -214,5 +213,5 @@ void JitArm::psq_stx(UGeckoInstruction inst)
 		VCVT(S1, vD1, 0);
 	}
 	// floats passed through D0
-	BL(R14); // Jump to the quantizer Store
+	BLX(R14); // Jump to the quantizer Store
 }

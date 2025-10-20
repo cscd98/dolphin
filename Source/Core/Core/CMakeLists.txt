@@ -653,6 +653,7 @@ elseif(_M_ARM_32)
 	  PowerPC/JitArm32/JitArm_LoadStorePaired.cpp
 		PowerPC/JitArm32/JitArm_SystemRegisters.cpp
 		PowerPC/JitArm32/JitArm_LoadStoreFloating.cpp
+    PowerPC/JitArm32/Jit_Util.cpp
   )
 endif()
 

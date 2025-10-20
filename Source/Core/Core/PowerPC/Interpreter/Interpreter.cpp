@@ -299,6 +299,10 @@ void Interpreter::unknown_instruction(Interpreter& interpreter, UGeckoInstructio
   Dolphin_Debugger::PrintCallstack(guard, Common::Log::LogType::POWERPC,
                                    Common::Log::LogLevel::LNOTICE);
 
+  // JUST DIE
+  exit(-1);
+  system.GetCPU().Break();
+
   const auto& ppc_state = interpreter.m_ppc_state;
   NOTICE_LOG_FMT(
       POWERPC,

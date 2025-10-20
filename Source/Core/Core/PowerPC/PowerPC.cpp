@@ -222,6 +222,8 @@ std::span<const CPUCore> AvailableCPUCores()
   static constexpr auto cpu_cores = {
 #ifdef _M_X86_64
       CPUCore::JIT64,
+#elif defined(_M_ARM_32)
+      CPUCore::JITARM,
 #elif defined(_M_ARM_64)
       CPUCore::JITARM64,
 #endif
@@ -236,6 +238,8 @@ CPUCore DefaultCPUCore()
 {
 #ifdef _M_X86_64
   return CPUCore::JIT64;
+#elif defined(_M_ARM_32)
+  return CPUCore::JITARM;
 #elif defined(_M_ARM_64)
   return CPUCore::JITARM64;
 #else
@@ -382,6 +386,8 @@ void PowerPCManager::SingleStep()
 
 void PowerPCManager::RunLoop()
 {
+  printf("PowerPCManager: Starting RunLoop with core %s\n", GetCPUName());
+  fflush(stdout);
   m_cpu_core_base->Run();
   Host_UpdateDisasmDialog();
 }
@@ -460,6 +466,42 @@ void UpdatePerformanceMonitor(u32 cycles, u32 num_load_stores, u32 num_fp_inst,
   }
 }
 
+void FMLLogRegHelper(const char* msg, uint32_t value)
+{
+  if (!msg)
+  {
+    fputs("LogRegHelper: null msg\n", stderr);
+    return;
+  }
+
+  constexpr uint32_t INVALID_NUM = 0xFFFFFFFF;
+
+  // Print to stdout
+  if (value != INVALID_NUM)
+    printf("%s 0x%08x\n", msg, value);
+  else
+    printf("%s\n", msg);
+  fflush(stdout);
+
+  // Also append to a file in the current directory
+  static FILE* logfile = nullptr;
+  if (!logfile)
+  {
+    logfile = fopen("jit_log.txt", "w");  // use "a" to append across runs
+    if (!logfile)
+    {
+      fputs("LogRegHelper: failed to open jit_log.txt\n", stderr);
+      return;
+    }
+  }
+
+  if (value != INVALID_NUM)
+    fprintf(logfile, "%s 0x%08x\n", msg, value);
+  else
+    fprintf(logfile, "%s\n", msg);
+  fflush(logfile);
+}
+
 void PowerPCManager::CheckExceptions()
 {
   u32 exceptions = m_ppc_state.Exceptions;
@@ -484,6 +526,10 @@ void PowerPCManager::CheckExceptions()
   // the instruction class, exceptions should be executed in a given order,
   // which is very different from the one arbitrarily chosen here. See §6.1.5
   // in 6xx_pem.pdf.
+
+  printf("CheckExceptions(): m_ppc_state.pc = 0x%08x, m_ppc_state.npc = 0x%08x\n",
+    m_ppc_state.pc, m_ppc_state.npc);
+  fflush(stdout);
 
   if (exceptions & EXCEPTION_ISI)
   {
@@ -531,6 +577,9 @@ void PowerPCManager::CheckExceptions()
 
     DEBUG_LOG_FMT(POWERPC, "EXCEPTION_FPU_UNAVAILABLE");
     m_ppc_state.Exceptions &= ~EXCEPTION_FPU_UNAVAILABLE;
+
+    FMLLogRegHelper("CheckExceptions(): EXCEPTION_FPU_UNAVAILABLE - m_ppc_state.pc",
+      m_ppc_state.pc);
   }
   else if (exceptions & EXCEPTION_FAKE_MEMCHECK_HIT)
   {

@@ -424,6 +424,8 @@ static void CpuThread(Core::System& system, const std::optional<std::string> sav
     return;
 #endif
   // Enter CPU run loop. When we leave it - we are done.
+  printf("CPU thread starting Run loop\n");
+  fflush(stdout);
   system.GetCPU().Run();
 
 #ifdef USE_MEMORYWATCHER
@@ -461,6 +463,9 @@ static void FifoPlayerThread(Core::System& system, const std::optional<std::stri
     s_state.compare_exchange_strong(expected, State::Running);
 
     CPUSetInitialExecutionState();
+
+    printf("FIFO Player thread starting Run loop\n");
+    fflush(stdout);
     system.GetCPU().Run();
 
     system.GetPowerPC().InjectExternalCPUCore(nullptr);

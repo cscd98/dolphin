@@ -11,6 +11,10 @@
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
 #include "Core/PatchEngine.h"
+#include "Core/System.h"
+#include "Core/Config/MainSettings.h"
+#include "Core/Host.h"
+#include "Core/HW/CPU.h"
 #include "Core/HLE/HLE.h"
 #include "Core/HW/GPFifo.h"
 #include "Core/HW/Memmap.h"
@@ -18,496 +22,1620 @@
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/PPCTables.h"
-#include "Core/PowerPC/Profiler.h"
 #include "Core/PowerPC/JitArm32/Jit.h"
 #include "Core/PowerPC/JitArm32/JitArm_Tables.h"
+#include "Core/PowerPC/Interpreter/Interpreter.h"
+#include "Common/HostDisassembler.h"
+#include "Common/IOFile.h"
+#include "Common/Profiler.h"
+
+constexpr size_t CODE_SIZE      = 1024 * 1024 * 32;   // 32 MB near
+constexpr size_t FARCODE_SIZE   = 1024 * 1024 * 64;   // 64 MB far
+constexpr size_t FARCODE_SIZE_MMU = 1024 * 1024 * 128; // 128 MB if MMU enabled
+
+// C++ side helper that actually prints, called from JIT code!
+#include <cstdio>
+#include <cstdint>
+
+extern "C" void LogRegHelper(const char* msg, uint32_t value)
+{
+  if (!msg)
+  {
+    fputs("LogRegHelper: null msg\n", stderr);
+    return;
+  }
+
+  constexpr uint32_t INVALID_NUM = 0xFFFFFFFF;
+
+  // Print to stdout
+  if (value != INVALID_NUM)
+    printf("%s 0x%08x\n", msg, value);
+  else
+    printf("%s\n", msg);
+  fflush(stdout);
+
+  // Also append to a file in the current directory
+  static FILE* logfile = nullptr;
+  if (!logfile)
+  {
+    logfile = fopen("jit_log.txt", "w");  // use "a" to append across runs
+    if (!logfile)
+    {
+      fputs("LogRegHelper: failed to open jit_log.txt\n", stderr);
+      return;
+    }
+  }
+
+  if (value != INVALID_NUM)
+    fprintf(logfile, "%s 0x%08x\n", msg, value);
+  else
+    fprintf(logfile, "%s\n", msg);
+  fflush(logfile);
+}
 
 using namespace ArmGen;
 
+JitArm::JitArm(Core::System& system)
+    : JitBase(system),
+      m_disassembler(HostDisassembler::Factory(HostDisassembler::Platform::arm))
+{
+  printf("JIT: Creating JIT ARM32\n");
+  printf("JitArm this=%p\n", (void*)this);
+  fflush(stdout);
+}
+
+JitArm::~JitArm() = default;
+
 void JitArm::Init()
 {
-	AllocCodeSpace(CODE_SIZE);
-	blocks.Init();
-	asm_routines.Init();
-	gpr.Init(this);
-	fpr.Init(this);
-	jo.enableBlocklink = true;
-	jo.optimizeGatherPipe = true;
-	UpdateMemoryOptions();
+  printf("Initializing JIT ARM32...\n");
+  fflush(stdout);
 
-	code_block.m_stats = &js.st;
-	code_block.m_gpa = &js.gpa;
-	code_block.m_fpa = &js.fpa;
-	analyzer.SetOption(PPCAnalyst::PPCAnalyzer::OPTION_CONDITIONAL_CONTINUE);
-	InitBackpatch();
+  InitFastmemArena();
 
-	// Disable all loadstores
-	// Ever since the MMU has been optimized for x86, loadstores on ARMv7 have been knackered
-	// XXX: Investigate exactly why these are broken
-	SConfig::GetInstance().m_LocalCoreStartupParameter.bJITLoadStoreOff = true;
-	SConfig::GetInstance().m_LocalCoreStartupParameter.bJITLoadStoreFloatingOff = true;
-	SConfig::GetInstance().m_LocalCoreStartupParameter.bJITLoadStorePairedOff= true;
+  RefreshConfig();
+
+  const size_t routines_size = CODE_SIZE;
+  const size_t farcode_size = jo.memcheck ? FARCODE_SIZE_MMU : FARCODE_SIZE;
+  AllocCodeSpace(CODE_SIZE + routines_size + farcode_size);
+  AddChildCodeSpace(&m_far_code, farcode_size);
+
+  jo.enableBlocklink = true;
+  jo.optimizeGatherPipe = true;
+  SetBlockLinkingEnabled(true);
+  SetOptimizationEnabled(true);
+  gpr.Init(this);
+  fpr.Init(this);
+  blocks.Init();
+
+  printf("m_enable_blr_optimization = %d\n", m_enable_blr_optimization);
+
+  printf("JIT ARM32: Entry points = %p\n",
+    (void*)blocks.GetEntryPoints());
+  printf("JIT ARM32: Fast block map = %p\n",
+    (void*)blocks.GetFastBlockMapFallback());
+
+  //ResetCodePtr();
+  //m_far_code.ResetCodePtr();
+
+  code_block.m_stats = &js.st;
+  code_block.m_gpa = &js.gpa;
+  code_block.m_fpa = &js.fpa;
+
+  InitBLROptimization();
+
+  GenerateAsmAndResetFreeMemoryRanges();
+
+  // Generates the slow/fastmem stubs
+  InitBackpatch();
+
+  printf("JIT ARM32 initialized successfully.\n");
+  fflush(stdout);
+
+  // Disable all loadstores
+  // Ever since the MMU has been optimized for x86, loadstores on ARMv7 have been knackered
+  // XXX: Investigate exactly why these are broken
+  /*Config::SetCurrent(Config::MAIN_DEBUG_JIT_LOAD_STORE_OFF, true);
+  Config::SetCurrent(Config::MAIN_DEBUG_JIT_LOAD_STORE_FLOATING_OFF, true);
+  Config::SetCurrent(Config::MAIN_DEBUG_JIT_LOAD_STORE_PAIRED_OFF, true);*/
+}
+
+void JitArm::SetBlockLinkingEnabled(bool enabled)
+{
+  jo.enableBlocklink = enabled && !SConfig::GetInstance().bJITNoBlockLinking;
+}
+
+void JitArm::SetOptimizationEnabled(bool enabled)
+{
+  if (enabled)
+  {
+    analyzer.SetOption(PPCAnalyst::PPCAnalyzer::OPTION_CONDITIONAL_CONTINUE);
+    analyzer.SetOption(PPCAnalyst::PPCAnalyzer::OPTION_CARRY_MERGE);
+    analyzer.SetOption(PPCAnalyst::PPCAnalyzer::OPTION_BRANCH_FOLLOW);
+  }
+  else
+  {
+    analyzer.ClearOption(PPCAnalyst::PPCAnalyzer::OPTION_CONDITIONAL_CONTINUE);
+    analyzer.ClearOption(PPCAnalyst::PPCAnalyzer::OPTION_CARRY_MERGE);
+    analyzer.ClearOption(PPCAnalyst::PPCAnalyzer::OPTION_BRANCH_FOLLOW);
+  }
 }
 
 void JitArm::ClearCache()
 {
-	ClearCodeSpace();
-	blocks.Clear();
-	UpdateMemoryOptions();
+  printf("Clearing JIT ARM32 cache...\n");
+  fflush(stdout);
+  m_far_code.ClearCodeSpace();
+  ClearCodeSpace();
+  blocks.Clear();
+  blocks.ClearRangesToFree();
+  const Common::ScopedJITPageWriteAndNoExecute enable_jit_page_writes(GetRegionPtr());
+  RefreshConfig();
+
+  GenerateAsmAndResetFreeMemoryRanges();
+}
+
+void JitArm::GenerateAsmAndResetFreeMemoryRanges()
+{
+  printf("Freeing JIT ARM32 code ranges...\n");
+  fflush(stdout);
+
+  // Reclaim previously freed slices
+  for (const auto& [from, to] : blocks.GetRangesToFreeNear())
+    m_free_ranges_near.insert(from, to);
+  for (const auto& [from, to] : blocks.GetRangesToFreeFar())
+    m_free_ranges_far.insert(from, to);
+
+  // Reset free lists to entire regions
+  m_free_ranges_near.clear();
+  m_free_ranges_near.insert(region, region + region_size);
+
+  m_free_ranges_far.clear();
+  m_free_ranges_far.insert(m_far_code.GetRegionPtr(), m_far_code.GetWritableCodeEnd());
+
+  // Bind emitter to a free near/far slice
+  if (!SetEmitterStateToFreeCodeRegion())
+  {
+    printf("JIT ARM32: no free code region available for dispatcher.\n");
+    fflush(stdout);
+    PanicAlertFmtT("JIT ARM32: no free code region available for dispatcher.");
+    return;
+  }
+
+  // Record slice start
+  u8* dispatcher_begin = GetWritableCodePtr();
+
+  // Emit dispatcher + common routines; this sets enter_code
+  GenerateAsm();
+
+  // Record slice end and mark it used
+  u8* dispatcher_end = GetWritableCodePtr();
+  if (dispatcher_begin && dispatcher_end && dispatcher_begin < dispatcher_end)
+    m_free_ranges_near.erase(dispatcher_begin, dispatcher_end);
+
+  Host_JitCacheInvalidation();
+}
+
+void JitArm::FreeRanges()
+{
+  blocks.ClearRangesToFree();
 }
 
 void JitArm::Shutdown()
 {
-	FreeCodeSpace();
-	blocks.Shutdown();
-	asm_routines.Shutdown();
+  FreeCodeSpace();
+  blocks.Shutdown();
 }
 
-// This is only called by FallBackToInterpreter() in this file. It will execute an instruction with the interpreter functions.
+// Execute one instruction via the interpreter.
+// Do NOT write directly to pc; commit only npc when ending the block.
 void JitArm::WriteCallInterpreter(UGeckoInstruction inst)
 {
-	gpr.Flush();
-	fpr.Flush();
-	Interpreter::_interpreterInstruction instr = GetInterpreterOp(inst);
-	MOVI2R(R0, inst.hex);
-	MOVI2R(R12, (u32)instr);
-	BL(R12);
+  gpr.Flush();
+  fpr.Flush();
+
+  Interpreter::Instruction instr = Interpreter::GetInterpreterOp(inst);
+
+  // If this instruction can end the block, precommit resume address to npc.
+  if (js.op->canEndBlock)
+  {
+    printf("js.op->canEndBlock is true\n");
+    fflush(stdout);
+
+    auto tmp = gpr.GetScopedReg();
+
+    // Resume at next word (PPC fallthrough)
+    MOVI2R(tmp, js.compilerPC);
+    STR(tmp, PPC_REG, PPCSTATE_OFF(pc));
+    ADD(tmp, tmp, 4);
+    STR(tmp, PPC_REG, PPCSTATE_OFF(npc));
+  }
+
+  // Preserve callee-saved regs and align SP to 8 bytes for the call (but none are used..)
+  // ensure r9 (your PPCSTATE base) and r11 (frame pointer) aren’t clobbered
+  // TODO 32 ensure R9 and R11 aren't clobbered everywhere?
+  ABI_PushCalleeGPRsAndAdjustStack(true);
+
+  MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetInterpreter()));
+  MOVI2R(R1, inst.hex);
+
+  // Load function pointer into a register and call it
+  MOVI2R(R12, reinterpret_cast<u32>(instr));
+  BLX(R12);
+
+  // Undo alignment and restore
+  ABI_PopCalleeGPRsAndAdjustStack(true);
 }
 
-void JitArm::FallBackToInterpreter(UGeckoInstruction _inst)
+// Interpreter fallback wrapper with coherent exit semantics.
+// No direct STR to pc; use WriteExceptionExit(resume) to advance.
+void JitArm::FallBackToInterpreter(UGeckoInstruction inst)
 {
-	WriteCallInterpreter(_inst.hex);
+  LogNumFromJIT("JIT ARM32: Falling back to interpreter for instruction at PC", js.compilerPC);
+  WriteCallInterpreter(inst);
+
+  // Reset registers the interpreter may have written
+  gpr.ResetRegisters(js.op->regsOut);
+  fpr.ResetRegisters(js.op->GetFregsOut());
+  gpr.ResetCRRegisters(js.op->crOut);
+
+  if (js.op->canEndBlock)
+  {
+    const u32 resume = js.compilerPC + 4;
+
+    // If this was the last instruction in the block, exit with explicit resume.
+    if (js.isLastInstruction)
+    {
+      WriteExceptionExit(resume);
+      return;
+    }
+
+    // Mid-block: only exit if npc differs from expected resume.
+    auto WA = gpr.GetScopedReg();
+    LDR(WA, PPC_REG, PPCSTATE_OFF(npc));
+
+    auto WB = gpr.GetScopedReg();
+    MOVI2R(WB, resume);
+    CMP(WA, static_cast<ARMReg>(WB));
+
+    FixupBranch skip_exit = B_CC(CC_EQ);
+    WriteExceptionExit(resume);
+    SetJumpTarget(skip_exit);
+  }
+  else if (ShouldHandleFPExceptionForInstruction(js.op))
+  {
+    printf("ShouldHandleFPExceptionForInstruction is true\n");
+    fflush(stdout);
+    WriteConditionalExceptionExit(EXCEPTION_PROGRAM);
+  }
+
+  if (jo.memcheck && (js.op->opinfo->flags & FL_LOADSTORE))
+  {
+    printf("FL_LOADSTORE is true\n");
+    fflush(stdout);
+    WriteConditionalExceptionExit(EXCEPTION_DSI);
+  }
 }
 
 void JitArm::HLEFunction(UGeckoInstruction _inst)
 {
-	gpr.Flush();
-	fpr.Flush();
-	MOVI2R(R0, js.compilerPC);
-	MOVI2R(R1, _inst.hex);
-	QuickCallFunction(R14, (void*)&HLE::Execute);
-	ARMReg rA = gpr.GetReg();
-	LDR(rA, R9, PPCSTATE_OFF(npc));
-	WriteExitDestInR(rA);
+  LogNumFromJIT("HLE Function");
+
+  gpr.Flush();
+  fpr.Flush();
+  MOVI2R(R0, js.compilerPC);
+  MOVI2R(R1, _inst.hex);
+  MOVI2R(R2, reinterpret_cast<u32>(&m_system));
+  QuickCallFunction(R12, (void*)&HLE::ExecuteFromJIT);
+  ARMReg rA = gpr.GetScopedReg(); // unlocked in WriteExitDestInR
+  LDR(rA, PPC_REG, PPCSTATE_OFF(npc));
+  WriteExitDestInR(rA);
 }
 
 void JitArm::DoNothing(UGeckoInstruction _inst)
 {
-	// Yup, just don't do anything.
+  // Yup, just don't do anything.
 }
 
 static const bool ImHereDebug = false;
 static const bool ImHereLog = false;
 static std::map<u32, int> been_here;
 
-static void ImHere()
+static void ImHere(JitArm& jit)
 {
-	static File::IOFile f;
-	if (ImHereLog)
-	{
-		if (!f)
-		{
-			f.Open("log32.txt", "w");
-		}
-		fprintf(f.GetHandle(), "%08x\n", PC);
-	}
+  printf("ImHere called\n");
+  fflush(stdout);
+  auto& ppc_state = jit.m_ppc_state;
+  static File::IOFile f;
+  if (ImHereLog)
+  {
+    if (!f)
+    {
+      f.Open("log32.txt", "w");
+    }
+    fprintf(f.GetHandle(), "%08x\n", ppc_state.pc);
+  }
 
-	if (been_here.find(PC) != been_here.end())
-	{
-		been_here.find(PC)->second++;
-		if ((been_here.find(PC)->second) & 1023)
-			return;
-	}
+  if (been_here.find(ppc_state.pc) != been_here.end())
+  {
+    been_here.find(ppc_state.pc)->second++;
+    if ((been_here.find(ppc_state.pc)->second) & 1023)
+      return;
+  }
 
-	DEBUG_LOG(DYNA_REC, "I'm here - PC = %08x , LR = %08x", PC, LR);
-	been_here[PC] = 1;
+  DEBUG_LOG_FMT(DYNA_REC, "I'm here - PC = {:08x} , LR = {:08x}", ppc_state.pc, LR(ppc_state));
+  been_here[ppc_state.pc] = 1;
 }
 
 void JitArm::Cleanup()
 {
-	if (jo.optimizeGatherPipe && js.fifoBytesThisBlock > 0)
-	{
-		PUSH(4, R0, R1, R2, R3);
-		QuickCallFunction(R14, (void*)&GPFifo::FastCheckGatherPipe);
-		POP(4, R0, R1, R2, R3);
-	}
+  printf("JIT ARM32: Cleaning up before exit at PC %08x\n", js.compilerPC);
+  fflush(stdout);
+  if (jo.optimizeGatherPipe && js.fifoBytesSinceCheck > 0)
+  {
+    printf("JIT ARM32: Cleaning up before exit at PC %08x -optimizeGatherPipe yes\n", js.compilerPC);
+    fflush(stdout);
+    PUSH(4, R0, R1, R2, R3);
+    MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetGPFifo()));
+    QuickCallFunction(R12, (void*)&GPFifo::FastCheckGatherPipe);
+    POP(4, R0, R1, R2, R3);
+  }
 }
+
 void JitArm::DoDownCount()
 {
-	ARMReg rA = gpr.GetReg();
-	LDR(rA, R9, PPCSTATE_OFF(downcount));
-	if (js.downcountAmount < 255) // We can enlarge this if we used rotations
-	{
-		SUBS(rA, rA, js.downcountAmount);
-	}
-	else
-	{
-		ARMReg rB = gpr.GetReg(false);
-		MOVI2R(rB, js.downcountAmount);
-		SUBS(rA, rA, rB);
-	}
-	STR(rA, R9, PPCSTATE_OFF(downcount));
-	gpr.Unlock(rA);
+  printf("JIT ARM32: Doing downcount update at PC %08x\n", js.compilerPC);
+  fflush(stdout);
+  ARMReg rA = gpr.GetReg();
+  LDR(rA, PPC_REG, PPCSTATE_OFF(downcount));
+  if (js.downcountAmount < 255) // We can enlarge this if we used rotations
+  {
+    SUBS(rA, rA, js.downcountAmount);
+  }
+  else
+  {
+    ARMReg rB = gpr.GetReg(false);
+    MOVI2R(rB, js.downcountAmount);
+    SUBS(rA, rA, rB);
+  }
+  STR(rA, PPC_REG, PPCSTATE_OFF(downcount));
+  gpr.Unlock(rA);
 }
-void JitArm::WriteExitDestInR(ARMReg Reg)
+
+void JitArm::ResetStack()
 {
-	STR(Reg, R9, PPCSTATE_OFF(pc));
-	Cleanup();
-	DoDownCount();
+  if (!m_enable_blr_optimization)
+    return;
 
-	if (Profiler::g_ProfileBlocks)
-		EndTimeProfile(js.curBlock);
-
-	MOVI2R(Reg, (u32)asm_routines.dispatcher);
-	B(Reg);
-	gpr.Unlock(Reg);
+  // Load saved baseline SP from PPCSTATE.stored_stack_pointer
+  auto tmp = gpr.GetScopedReg();
+  LDR(tmp, PPC_REG, PPCSTATE_OFF(stored_stack_pointer));
+  MOV(_SP, static_cast<ARMReg>(tmp));
 }
+
+void JitArm::IntializeSpeculativeConstants()
+{
+  const u8* fail = nullptr;
+
+  for (auto i : code_block.m_gpr_inputs)
+  {
+    const u32 compile_time_value = m_ppc_state.gpr[i];
+    if (m_mmu.IsOptimizableGatherPipeWrite(compile_time_value) ||
+        m_mmu.IsOptimizableGatherPipeWrite(compile_time_value - 0x8000) ||
+        compile_time_value == 0xCC000000)
+    {
+      if (!fail)
+      {
+        // Far failure code
+        SwitchToFarCode();
+        fail = GetCodePtr();
+
+        MOVI2R(DISPATCHER_PC, js.blockStart);
+        STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
+
+        MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetJitInterface()));
+        MOVI2R(R1, static_cast<u32>(JitInterface::ExceptionType::SpeculativeConstants));
+        auto cal = gpr.GetScopedReg();
+        MOVI2R(cal, reinterpret_cast<u32>(&JitInterface::CompileExceptionCheckFromJIT));
+        BLX(cal);
+
+        B(dispatcher_no_check);
+        SwitchToNearCode();
+      }
+
+      // Near runtime check
+      {
+        auto tmp = gpr.GetScopedReg();
+        auto val = gpr.R(i);
+        MOVI2R(tmp, compile_time_value);
+        CMP(val, static_cast<ARMReg>(tmp));
+      }
+
+      FixupBranch no_fail = B_CC(CC_EQ);
+      B(fail);
+      SetJumpTarget(no_fail);
+
+      gpr.SetImmediate(i, compile_time_value, true);
+    }
+  }
+}
+
+void JitArm::MSRUpdated(ARMReg msr)
+{
+  auto WA = gpr.GetScopedReg();
+  auto WB = gpr.GetScopedReg();
+
+  auto& memory = m_system.GetMemory();
+
+  // Load logical base into MEM_REG
+  MOVI2R(MEM_REG,
+         static_cast<u32>(reinterpret_cast<uintptr_t>(
+           jo.fastmem ? memory.GetLogicalBase()
+                      : memory.GetLogicalPageMappingsBase())));
+
+  // Load physical base into WA
+  MOVI2R(WA,
+         static_cast<u32>(reinterpret_cast<uintptr_t>(
+           jo.fastmem ? memory.GetPhysicalBase()
+                      : memory.GetPhysicalPageMappingsBase())));
+
+  // Test MSR.DR (bit 27)
+  TST(msr, Operand2(1, 27));
+  FixupBranch dr_clear = B_CC(CC_EQ);  // DR == 0 → keep logical base
+
+  // DR != 0 → use physical base
+  MOV(MEM_REG, WA);
+  B_CC(CC_AL);
+
+  SetJumpTarget(dr_clear);
+  // DR == 0 → MEM_REG already holds logical base
+
+  STR(MEM_REG, PPC_REG, PPCSTATE_OFF(mem_ptr));
+
+  // Update feature_flags
+  static_assert(UReg_MSR{}.DR.StartBit() == 4);
+  static_assert(UReg_MSR{}.IR.StartBit() == 5);
+  static_assert(FEATURE_FLAG_MSR_DR == 1 << 0);
+  static_assert(FEATURE_FLAG_MSR_IR == 1 << 1);
+
+  const u32 other_feature_flags = m_ppc_state.feature_flags & ~0x3;
+
+  UBFX(WA, msr, 4, 2);
+  if (other_feature_flags != 0)
+  {
+    MOVI2R(WB, other_feature_flags);
+    ORR(WA, WA, Operand2(static_cast<ARMReg>(WB)));
+  }
+
+  STR(WA, PPC_REG, PPCSTATE_OFF(feature_flags));
+}
+
+void JitArm::SafeB(const void* fnptr)
+{
+  if (IsBranchInRange(fnptr, GetCodePtr()))
+  {
+    B(fnptr);
+  }
+  else
+  {
+    auto reg = gpr.GetScopedReg();
+    MOVI2R(reg, reinterpret_cast<u32>(fnptr));
+    BX(reg);
+  }
+}
+
+void JitArm::SafeSetJumpTarget(const ArmGen::FixupBranch& branch)
+{
+  const void* target = GetCodePtr();
+
+  if (IsBranchInRange(target, branch.ptr))
+  {
+    SetJumpTarget(branch);
+  }
+  else
+  {
+    auto reg = gpr.GetScopedReg();
+    MOVI2R(reg, static_cast<u32>(reinterpret_cast<uintptr_t>(target)));
+
+    switch (branch.type)
+    {
+      case ArmGen::FixupBranch::Type::BL:
+        BLX(reg);
+        break;
+      default:
+        BX(reg);
+        break;
+    }
+  }
+}
+
+extern "C" {
+  // Stable addresses in .rodata
+  static const char kMsgNpcAfterStore[] = "npc after store:";
+  static const char kMsgPcAfterStore[]  = "pc after store:";
+}
+
+// Writes destination from Reg into DISPATCHER_PC, validates, and dispatches exactly once.
+// No direct STR to pc or npc. BKPT paths do NOT fall through.
+void JitArm::WriteExitDestInR(ArmGen::ARMReg Reg)
+{
+  printf("JIT ARM32: WriteExitDestInR: register %d, PC: %08x\n", Reg, js.compilerPC);
+  fflush(stdout);
+
+  // Validate Reg != 0
+  CMP(Reg, 0);
+  FixupBranch nonzero = B_CC(CC_NEQ);
+  // Zero path: trap and bail to dispatcher immediately
+  BKPT(0x4321);
+  {
+    auto t = gpr.GetScopedReg();
+    MOVI2R(t, reinterpret_cast<u32>(dispatcher));
+    B(t);
+  }
+  SetJumpTarget(nonzero);
+
+  // Optional range check: top nibble must be 0x8 (tune if needed)
+  auto tmp = gpr.GetScopedReg();
+  AND(tmp, Reg, Operand2(0xF0000000));
+  MOVI2R(R12, 0x80000000);
+  CMP(tmp, R12);
+  FixupBranch in_range = B_CC(CC_EQ);
+  // Out-of-range path: trap and bail
+  BKPT(0x4322);
+  {
+    auto t = gpr.GetScopedReg();
+    MOVI2R(t, reinterpret_cast<u32>(dispatcher));
+    B(t);
+  }
+  SetJumpTarget(in_range);
+
+  // Arm64 parity: do NOT touch npc/pc here. Seed dispatcher with the destination.
+  MOV(DISPATCHER_PC, Reg);
+  LogRegFromJIT("WriteExitDestInR: Exit sets DISPATCHER_PC:", DISPATCHER_PC);
+
+  // Diagnostics (optional)
+  LogRegFromJIT("Exit target (DISPATCHER_PC):", DISPATCHER_PC);
+
+  // Single cleanup + downcount + dispatch
+  Cleanup();
+  DoDownCount();
+  if (IsProfilingEnabled())
+    EndTimeProfile(js.curBlock);
+
+  MOVI2R(tmp, reinterpret_cast<u32>(dispatcher));
+  B(tmp);
+}
+
 void JitArm::WriteRfiExitDestInR(ARMReg Reg)
 {
-	STR(Reg, R9, PPCSTATE_OFF(pc));
-	Cleanup();
-	DoDownCount();
+  LogRegFromJIT("WriteRfiExitDestInR: Reg is", Reg);
 
-	if (Profiler::g_ProfileBlocks)
-		EndTimeProfile(js.curBlock);
+  // Commit SRR0 into pc/npc and set DISPATCHER_PC
+  STR(Reg, PPC_REG, PPCSTATE_OFF(pc));
+  STR(Reg, PPC_REG, PPCSTATE_OFF(npc));
+  LDR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(npc));
 
-	ARMReg A = gpr.GetReg(false);
+  Cleanup();
 
-	LDR(A, R9, PPCSTATE_OFF(pc));
-	STR(A, R9, PPCSTATE_OFF(npc));
-		QuickCallFunction(A, (void*)&PowerPC::CheckExceptions);
-	LDR(A, R9, PPCSTATE_OFF(npc));
-	STR(A, R9, PPCSTATE_OFF(pc));
-	gpr.Unlock(Reg); // This was locked in the instruction beforehand
+  if (IsProfilingEnabled())
+    EndTimeProfile(js.curBlock);
 
-	MOVI2R(A, (u32)asm_routines.dispatcher);
-	B(A);
+  // Call exceptions routine
+  MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetPowerPC()));
+  QuickCallFunction(R12, (void*)&PowerPC::CheckExceptionsFromJIT);
+
+  // Update membase after exception handling
+  EmitUpdateMembase();
+
+  gpr.Unlock(Reg);
+
+  // Log final pc/npc
+  {
+    auto W = gpr.GetScopedReg();
+    LDR(W, PPC_REG, PPCSTATE_OFF(pc));
+    LogRegFromJIT("WriteRfiExitDestInR: Updated PPCSTATE_OFF(pc)", W);
+    LDR(W, PPC_REG, PPCSTATE_OFF(npc));
+    LogRegFromJIT("WriteRfiExitDestInR: Updated PPCSTATE_OFF(npc)", W);
+  }
+
+  DoDownCount();
+
+  // Branch back to dispatcher
+  auto disp = gpr.GetScopedReg();
+  MOVI2R(disp, reinterpret_cast<u32>(dispatcher));
+  B(disp);
 }
-void JitArm::WriteExceptionExit()
+
+
+void JitArm::WriteConditionalExceptionExit(int exception, u32 increment_sp_on_exit)
 {
-	Cleanup();
-	DoDownCount();
-
-	if (Profiler::g_ProfileBlocks)
-		EndTimeProfile(js.curBlock);
-
-	ARMReg A = gpr.GetReg(false);
-
-	LDR(A, R9, PPCSTATE_OFF(pc));
-	STR(A, R9, PPCSTATE_OFF(npc));
-		QuickCallFunction(A, (void*)&PowerPC::CheckExceptions);
-	LDR(A, R9, PPCSTATE_OFF(npc));
-	STR(A, R9, PPCSTATE_OFF(pc));
-
-	MOVI2R(A, (u32)asm_routines.dispatcher);
-	B(A);
+  auto tmp = gpr.GetScopedReg();
+  WriteConditionalExceptionExit(exception, tmp, ArmGen::INVALID_REG, increment_sp_on_exit);
 }
-void JitArm::WriteExit(u32 destination)
+
+void JitArm::WriteConditionalExceptionExit(int exception,
+                                           ARMReg temp_gpr,
+                                           ARMReg /* temp_fpr */,
+                                           u32 /* increment_sp_on_exit */)
 {
-	Cleanup();
+  if (temp_gpr == ArmGen::INVALID_REG)
+    temp_gpr = gpr.GetScopedReg();
 
-	DoDownCount();
+  // Load Exceptions word and AND with mask
+  LDR(temp_gpr, PPC_REG, PPCSTATE_OFF(Exceptions));
 
-	if (Profiler::g_ProfileBlocks)
-		EndTimeProfile(js.curBlock);
+  auto tmp_mask = gpr.GetScopedReg();
+  MOVI2R(tmp_mask, static_cast<u32>(exception));
+  AND(temp_gpr, temp_gpr, Operand2(tmp_mask));
+  FixupBranch no_exception = B_CC(CC_EQ);  // skip if zero
 
-	//If nobody has taken care of this yet (this can be removed when all branches are done)
-	JitBlock *b = js.curBlock;
-	JitBlock::LinkData linkData;
-	linkData.exitAddress = destination;
-	linkData.exitPtrs = GetWritableCodePtr();
-	linkData.linkStatus = false;
+  // Branch to far code for slow path
+  FixupBranch handle_exception = B();
+  SwitchToFarCode();
+  SetJumpTarget(handle_exception);
 
-	// Link opportunity!
-	int block;
-	if (jo.enableBlocklink && (block = blocks.GetBlockNumberFromStartAddress(destination)) >= 0)
-	{
-		// It exists! Joy of joy!
-		B(blocks.GetBlock(block)->checkedEntry);
-		linkData.linkStatus = true;
-	}
-	else
-	{
-		ARMReg A = gpr.GetReg(false);
-		MOVI2R(A, destination);
-		STR(A, R9, PPCSTATE_OFF(pc));
-		MOVI2R(A, (u32)asm_routines.dispatcher);
-		B(A);
-	}
+  // Flush registers but maintain state
+  gpr.Flush(FlushMode::FLUSH_MAINTAIN_STATE);
+  fpr.Flush(FlushMode::FLUSH_MAINTAIN_STATE);
 
-	b->linkData.push_back(linkData);
+  // Inline exception exit
+  WriteExceptionExit(js.compilerPC, false, true);
+
+  // Return to near path
+  SwitchToNearCode();
+
+  SetJumpTarget(no_exception);
+}
+
+// ARM32 equivalent of JitArm64::FakeLKExit
+// Purpose: for inlined CALLs, fake a BLR-compatible stack so a later WriteBLRExit
+// can validate and "return" correctly via the dispatcher path.
+// Notes:
+// - No ADR/BX intrinsics on ARM32: materialize the host return address with MOVI2R.
+// - No near/far code split on ARM32: omit exitFarcode and SwitchTo* calls.
+// - ARM32 LinkData does not have exitFarcode: do not assign it.
+// - WriteLinkBlock requires the emitter overload with an explicit dest (nullptr).
+void JitArm::FakeLKExit(u32 exit_address_after_return, ArmGen::ARMReg exit_address_after_return_reg)
+{
+  LogNumFromJIT("FakeLKExit: calling exit_address_after_return", exit_address_after_return);
+  LogNumFromJIT("WriteExit: exit_address_after_return_reg",
+    static_cast<u32>(exit_address_after_return_reg));
+
+  if (!m_enable_blr_optimization)
+  {
+    LogNumFromJIT("FakeLKExit: m_enable_blr_optimization", m_enable_blr_optimization);
+    return;
+  }
+
+  // Build the packed key: (feature_flags << 30) | (exit_address_after_return >> 2)
+  const u32 feature_flags = m_ppc_state.feature_flags;
+
+  // Use raw regs for stack ops (avoid copying ScopedARMReg).
+  ARMReg retaddr = gpr.GetReg();
+  ARMReg key     = gpr.GetReg();
+
+  // Compute host address after return: current code ptr + (link stub + 2 words)
+  // ARM64 used: BLOCK_LINK_SIZE + sizeof(u32)*2; keep the same layout for parity.
+  const u32 adr_offset = static_cast<u32>(JitArmBlockCache::BLOCK_LINK_SIZE + sizeof(u32) * 2);
+  const u8* host_address_after_return = GetCodePtr() + adr_offset;
+
+  // retaddr := host_address_after_return
+  MOVI2R(retaddr, reinterpret_cast<u32>(host_address_after_return));
+
+  // key := packed key
+  if (exit_address_after_return_reg == ArmGen::INVALID_REG)
+  {
+    MOVI2R(key, (feature_flags << 30) | (exit_address_after_return >> 2));
+  }
+  else if (feature_flags == 0)
+  {
+    MOV(key, exit_address_after_return_reg);
+    LSR(key, key, 2);
+  }
+  else
+  {
+    auto tmp = gpr.GetScopedReg();
+    LSR(tmp, exit_address_after_return_reg, 2);
+    ORR(key, static_cast<ARMReg>(tmp), Operand2(feature_flags << 30));
+  }
+
+  // Push {retaddr, key} onto the stack (pair store). Order matches ARM64 STP.
+  PUSH(2, retaddr, key);
+
+  // Call dispatcher (materialize address, use BLX)
+  {
+    auto call = gpr.GetScopedReg();
+    MOVI2R(call, reinterpret_cast<u32>(dispatcher));
+    BLX(call);
+  }
+
+  // Write the regular exit node after the return.
+  JitBlock* b = js.curBlock;
+  JitBlock::LinkData linkData{};
+  linkData.exitAddress = exit_address_after_return;
+  linkData.exitPtrs = GetWritableCodePtr();
+  linkData.linkStatus = false;
+  linkData.call = false;
+
+  const bool switch_to_far_code = !IsInFarCode();
+  if (switch_to_far_code)
+  {
+    SwitchToFarCode();
+    linkData.exitFarcode = GetCodePtr();
+    SwitchToNearCode();
+  }
+  else
+  {
+    linkData.exitFarcode = GetCodePtr() + JitArmBlockCache::BLOCK_LINK_SIZE;
+  }
+  b->linkData.push_back(linkData);
+
+  blocks.WriteLinkBlock(*this, linkData);
+
+  if (switch_to_far_code)
+    SwitchToFarCode();
+
+  // Seed dispatcher and go to timing path.
+  MOVI2R(DISPATCHER_PC, exit_address_after_return);
+  auto t = gpr.GetScopedReg();
+  MOVI2R(t, reinterpret_cast<u32>(GetAsmRoutines()->do_timing));
+  B(t);
+
+  if (switch_to_far_code)
+    SwitchToNearCode();
+
+  // Release the raw regs we reserved for PUSH
+  gpr.Unlock(retaddr);
+  gpr.Unlock(key);
+}
+
+void JitArm::WriteExceptionExit(u32 destination /*=0*/,
+                                bool only_external /*=false*/,
+                                bool always_exception /*=false*/)
+{
+  MOVI2R(DISPATCHER_PC, destination);
+  WriteExceptionExit(DISPATCHER_PC, only_external, always_exception);
+}
+
+void JitArm::WriteExceptionExit(ARMReg dest, bool only_external, bool always_exception)
+{
+  LogRegFromJIT("WriteExceptionExit(reg): dest", dest);
+  LogNumFromJIT("WriteExceptionExit(reg): only_external", only_external ? 1u : 0u);
+  LogNumFromJIT("WriteExceptionExit(reg): always_exception", always_exception ? 1u : 0u);
+
+  LogRegFromJIT("WriteExceptionExit (reg): DISPATCHER_PC before MOV", DISPATCHER_PC);
+  if (dest != DISPATCHER_PC)
+  {
+    LogNumFromJIT("WriteExceptionExit (reg): Updating dispatcher PC as does not match");
+    MOV(DISPATCHER_PC, dest);
+  }
+  LogRegFromJIT("WriteExceptionExit (reg): DISPATCHER_PC after MOV", DISPATCHER_PC);
+
+  Cleanup();
+
+  FixupBranch no_exceptions;
+  if (!always_exception)
+  {
+    auto ex = gpr.GetScopedReg();
+    LDR(ex, PPC_REG, PPCSTATE_OFF(Exceptions));
+    CMP(ex, 0);
+    LogRegFromJIT("WriteExceptionExit: Exceptions before helper", ex);
+    no_exceptions = B_CC(CC_EQ);
+  }
+
+  static_assert(PPCSTATE_OFF(pc) <= 252);
+  static_assert(PPCSTATE_OFF(pc) + 4 == PPCSTATE_OFF(npc));
+
+  STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
+  STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(npc));
+  LogNumFromJIT("WriteExceptionExit(reg): stored DISPATCHER_PC into ppcstate");
+
+  const auto f = only_external
+      ? &PowerPC::CheckExternalExceptionsFromJIT
+      : &PowerPC::CheckExceptionsFromJIT;
+
+  LogNumFromJIT("WriteExceptionExit(reg): calling exception function");
+  MOVI2R(R0, static_cast<u32>(reinterpret_cast<uintptr_t>(&m_system.GetPowerPC())));
+  MOVI2R(R12, static_cast<u32>(reinterpret_cast<uintptr_t>(f)));
+  BLX(R12);
+
+  EmitUpdateMembase();
+
+  // reload dispatcher pc from ppc_state.npc
+  LDR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(npc));
+  LogRegFromJIT("WriteExceptionExit: Reloaded DISPATCHER_PC:", DISPATCHER_PC);
+
+  if (!always_exception)
+    SetJumpTarget(no_exceptions);
+
+  LogNumFromJIT("WriteExceptionExit(reg): took no_exceptions skip");
+
+  if (IsProfilingEnabled())
+  {
+    MOVI2R(R0, static_cast<u32>(reinterpret_cast<uintptr_t>(js.curBlock->profile_data.get())));
+    MOVI2R(R1, static_cast<u32>(js.downcountAmount));
+    MOVI2R(R12, static_cast<u32>(reinterpret_cast<uintptr_t>(&JitBlock::ProfileData::EndProfiling)));
+    BLX(R12);
+  }
+
+  DoDownCount();
+  SafeB(dispatcher);
+}
+
+// ARM32 version of JitArm64::WriteExit(u32, bool, u32, Reg)
+// Adds IsInFarCode()-guarded far/near switching for timing stubs.
+void JitArm::WriteExit(u32 destination, bool LK, u32 exit_address_after_return,
+                       ArmGen::ARMReg exit_address_after_return_reg)
+{
+  LogNumFromJIT("WriteExit: destination", static_cast<u32>(destination));
+  LogNumFromJIT("WriteExit: LK", LK ? 1u : 0u);
+  LogNumFromJIT("WriteExit: exit_address_after_return", static_cast<u32>(exit_address_after_return));
+  LogNumFromJIT("WriteExit: exit_address_after_return_reg",
+                static_cast<u32>(exit_address_after_return_reg));
+
+  // Common cleanup + optional profiling + downcount
+  Cleanup();
+  if (IsProfilingEnabled())
+  {
+    auto cal = gpr.GetScopedReg();
+    MOVI2R(R0, reinterpret_cast<u32>(js.curBlock->profile_data.get()));
+    MOVI2R(R1, js.downcountAmount);
+    MOVI2R(cal, reinterpret_cast<u32>(&JitBlock::ProfileData::EndProfiling));
+    BLX(cal);
+  }
+  DoDownCount();
+
+  LK &= m_enable_blr_optimization;
+
+  const u8* host_address_after_return = nullptr;
+  if (LK)
+  {
+    // Push {ARM return addr; packed key} on the stack
+    const u32 feature_flags = m_ppc_state.feature_flags;
+    const u32 adr_offset = static_cast<u32>(JitArmBlockCache::BLOCK_LINK_SIZE + sizeof(u32) * 2);
+    host_address_after_return = GetCodePtr() + adr_offset;
+
+    ARMReg retaddr = gpr.GetReg();
+    ARMReg key     = gpr.GetReg();
+
+    MOVI2R(retaddr, reinterpret_cast<u32>(host_address_after_return));
+
+    if (exit_address_after_return_reg == ArmGen::INVALID_REG)
+    {
+      MOVI2R(key, (feature_flags << 30) | (exit_address_after_return >> 2));
+    }
+    else if (feature_flags == 0)
+    {
+      MOV(key, exit_address_after_return_reg);
+      LSR(key, key, 2);
+    }
+    else
+    {
+      auto tmp = gpr.GetScopedReg();
+      LSR(tmp, exit_address_after_return_reg, 2);
+      ORR(key, static_cast<ARMReg>(tmp), Operand2(feature_flags << 30));
+    }
+
+    PUSH(2, retaddr, key);
+
+    auto call = gpr.GetScopedReg();
+    MOVI2R(call, reinterpret_cast<u32>(dispatcher));
+    BLX(call);
+
+    gpr.Unlock(retaddr);
+    gpr.Unlock(key);
+  }
+
+  // Reserve farcode addresses for timing stubs
+  constexpr size_t primary_farcode_size = 3 * sizeof(u32);
+  const bool switch_to_far_code = !IsInFarCode();
+  const u8* primary_farcode_addr;
+  if (switch_to_far_code)
+  {
+    SwitchToFarCode();
+    primary_farcode_addr = GetCodePtr();
+    SwitchToNearCode();
+  }
+  else
+  {
+    primary_farcode_addr = GetCodePtr() + JitArmBlockCache::BLOCK_LINK_SIZE +
+                           (LK ? JitArmBlockCache::BLOCK_LINK_SIZE : 0);
+  }
+  const u8* return_farcode_addr = primary_farcode_addr + primary_farcode_size;
+
+  // Primary link: destination
+  JitBlock* b = js.curBlock;
+  JitBlock::LinkData linkData{};
+  linkData.exitAddress = destination;
+  linkData.exitPtrs = GetWritableCodePtr();
+  linkData.linkStatus = false;
+  linkData.call = LK;
+  linkData.exitFarcode = primary_farcode_addr;
+  b->linkData.push_back(linkData);
+  blocks.WriteLinkBlock(*this, linkData);
+
+  if (LK)
+  {
+    DEBUG_ASSERT(GetCodePtr() == host_address_after_return || HasWriteFailed());
+
+    // Secondary link: after-return
+    linkData.exitAddress = exit_address_after_return;
+    linkData.exitPtrs = GetWritableCodePtr();
+    linkData.linkStatus = false;
+    linkData.call = false;
+    linkData.exitFarcode = return_farcode_addr;
+    b->linkData.push_back(linkData);
+    blocks.WriteLinkBlock(*this, linkData);
+  }
+
+  // Emit timing stubs in far code
+  if (switch_to_far_code)
+    SwitchToFarCode();
+
+  MOVI2R(DISPATCHER_PC, destination);
+  if (LK)
+    BL(GetAsmRoutines()->do_timing);
+  else
+    SafeB(GetAsmRoutines()->do_timing);
+
+  if (LK)
+  {
+    MOVI2R(DISPATCHER_PC, exit_address_after_return);
+    B(GetAsmRoutines()->do_timing);
+  }
+
+  if (switch_to_far_code)
+    SwitchToNearCode();
+}
+
+// ARM32 version of JitArm64::WriteExit(reg, bool, u32, Reg)
+// Adds IsInFarCode()-guarded far/near switching for timing stubs.
+void JitArm::WriteExit(ArmGen::ARMReg dest, bool LK,
+                       u32 exit_address_after_return,
+                       ArmGen::ARMReg exit_address_after_return_reg)
+{
+  LogRegFromJIT("WriteExit (reg): dest", dest);
+  LogNumFromJIT("WriteExit (reg): LK", LK ? 1 : 0);
+  LogNumFromJIT("WriteExit (reg): exit_address_after_return", exit_address_after_return);
+  if (exit_address_after_return_reg != ArmGen::INVALID_REG)
+    LogRegFromJIT("WriteExit (reg): exit_address_after_return_reg", exit_address_after_return_reg);
+  else
+    LogNumFromJIT("WriteExit (reg): exit_address_after_return_reg invalid");
+
+  if (dest != DISPATCHER_PC)
+  {
+    LogNumFromJIT("WriteExit (reg): Updating dispatcher PC as does not match");
+    MOV(DISPATCHER_PC, dest);
+  }
+
+  Cleanup();
+  if (IsProfilingEnabled())
+  {
+    ABI_PushCalleeGPRsAndAdjustStack(true);
+
+    auto cal = gpr.GetScopedReg();
+    MOVI2R(R0, reinterpret_cast<u32>(js.curBlock->profile_data.get()));
+    MOVI2R(R1, js.downcountAmount);
+    MOVI2R(cal, reinterpret_cast<u32>(&JitBlock::ProfileData::EndProfiling));
+    BLX(cal);
+
+    ABI_PopCalleeGPRsAndAdjustStack(true);
+  }
+  DoDownCount();
+
+  LK &= m_enable_blr_optimization;
+
+  if (!LK)
+  {
+    LogNumFromJIT("WriteExit (reg): No LK so branching to dispatcher");
+    B(reinterpret_cast<const void*>(dispatcher));
+    return;
+  }
+
+  LogNumFromJIT("WriteExit (reg): build packed key");
+
+  // Build packed key = (feature_flags << 30) | (exit_address_after_return >> 2)
+  const u32 feature_flags = m_ppc_state.feature_flags;
+  ARMReg key = gpr.GetReg();
+  if (exit_address_after_return_reg == ArmGen::INVALID_REG)
+  {
+    MOVI2R(key, (feature_flags << 30) | (exit_address_after_return >> 2));
+  }
+  else if (feature_flags == 0)
+  {
+    MOV(key, exit_address_after_return_reg);
+    LSR(key, key, 2);
+  }
+  else
+  {
+    auto tmp = gpr.GetScopedReg();
+    LSR(tmp, exit_address_after_return_reg, 2);
+    ORR(key, static_cast<ARMReg>(tmp), Operand2(feature_flags << 30));
+  }
+
+  LogNumFromJIT("WriteExit (reg): Push key");
+  // Push only the packed key (avoid ADR/BX on ARM32)
+  PUSH(1, key);
+  gpr.Unlock(key);
+
+  // Call dispatcher via BLX
+  auto call = gpr.GetScopedReg();
+  MOVI2R(call, reinterpret_cast<u32>(dispatcher));
+  BLX(call);
+
+  LogNumFromJIT("WriteExit (reg): switch_to_far_code");
+
+  // After return: emit a normal exit node with farcode reservation
+  constexpr size_t farcode_stub_size = 3 * sizeof(u32);
+  const bool switch_to_far_code = !IsInFarCode();
+  const u8* exit_farcode_addr;
+  if (switch_to_far_code)
+  {
+    SwitchToFarCode();
+    exit_farcode_addr = GetCodePtr();
+    SwitchToNearCode();
+  }
+  else
+  {
+    // If already in far code, approximate placement after link thunk
+    exit_farcode_addr = GetCodePtr() + JitArmBlockCache::BLOCK_LINK_SIZE;
+  }
+
+  JitBlock* b = js.curBlock;
+  JitBlock::LinkData linkData{};
+  linkData.exitAddress = exit_address_after_return;
+  linkData.exitPtrs = GetWritableCodePtr();
+  linkData.linkStatus = false;
+  linkData.call = false;
+  linkData.exitFarcode = exit_farcode_addr;
+  b->linkData.push_back(linkData);
+  blocks.WriteLinkBlock(*this, linkData);
+
+  // Far timing stub
+  if (switch_to_far_code)
+    SwitchToFarCode();
+
+  MOVI2R(DISPATCHER_PC, exit_address_after_return);
+
+  auto t = gpr.GetScopedReg();
+  MOVI2R(t, reinterpret_cast<u32>(GetAsmRoutines()->do_timing));
+  B(t);
+
+  if (switch_to_far_code)
+    SwitchToNearCode();
+}
+
+void JitArm::WriteBLRExit(ArmGen::ARMReg dest)
+{
+  if (!m_enable_blr_optimization)
+  {
+    // Fallback: just exit through the generic path
+    LogRegFromJIT("WriteBLRExit - m_enable_blr_optimization is false (using dest)", dest);
+    WriteExit(dest);
+    return;
+  }
+
+  // Copy the destination into the reserved dispatcher PC register if needed
+  if (dest != DISPATCHER_PC)
+    MOV(DISPATCHER_PC, dest);
+
+  // Do any housekeeping before leaving this block
+  Cleanup();
+  if (IsProfilingEnabled())
+  {
+    EndTimeProfile(js.curBlock);
+  }
+
+  // ARM32 doesn’t have the fast RET‑to‑host‑PC path that ARM64 uses,
+  // so we just fall back to the dispatcher.
+  DoDownCount();
+
+  // Load the dispatcher entry point into a scratch reg and branch
+  auto scratch = gpr.GetScopedReg();
+  MOVI2R(scratch, reinterpret_cast<u32>(dispatcher));
+  B(scratch);
 }
 
 void JitArm::Run()
 {
-	CompiledCode pExecAddr = (CompiledCode)asm_routines.enterCode;
-	pExecAddr();
+  // emulated PowerPC program counter
+  printf("JIT ARM32: Running JITed code at PC %08x\n", m_ppc_state.pc);
+  fflush(stdout);
+
+  ProtectStack();
+  m_system.GetJitInterface().UpdateMembase();
+
+  // host address in ARM32 code cache
+  CompiledCode pExecAddr = (CompiledCode)enter_code;
+
+  printf("JIT ARM32: Entering JITed code at %p with pc: %08x\n", pExecAddr, m_ppc_state.pc);
+  fflush(stdout);
+
+  pExecAddr();
+
+  printf("JIT ARM32: Returned from JITed code at PC %08x\n", m_ppc_state.pc);
+  fflush(stdout);
+
+  UnprotectStack();
 }
 
 void JitArm::SingleStep()
 {
-	CompiledCode pExecAddr = (CompiledCode)asm_routines.enterCode;
-	pExecAddr();
+  printf("JIT ARM32: Single stepping JITed code at PC %08x\n", m_ppc_state.pc);
+  fflush(stdout);
+
+  ProtectStack();
+  m_system.GetJitInterface().UpdateMembase();
+
+  CompiledCode pExecAddr = (CompiledCode)enter_code;
+  pExecAddr();
+
+  UnprotectStack();
 }
 
 void JitArm::Trace()
 {
-	std::string regs;
-	std::string fregs;
+  printf("JIT ARM32: Tracing JITed code at PC %08x\n", m_ppc_state.pc);
+  fflush(stdout);
+  std::string regs;
+  std::string fregs;
 
 #ifdef JIT_LOG_GPR
-	for (int i = 0; i < 32; i++)
-	{
-		regs += StringFromFormat("r%02d: %08x ", i, PowerPC::ppcState.gpr[i]);
-	}
+  for (int i = 0; i < 32; i++)
+  {
+    regs += StringFromFormat("r%02d: %08x ", i, PowerPC::ppcState.gpr[i]);
+  }
 #endif
 
 #ifdef JIT_LOG_FPR
-	for (int i = 0; i < 32; i++)
-	{
-		fregs += StringFromFormat("f%02d: %016x ", i, riPS0(i));
-	}
+  for (int i = 0; i < 32; i++)
+  {
+    fregs += StringFromFormat("f%02d: %016x ", i, riPS0(i));
+  }
 #endif
 
-	DEBUG_LOG(DYNA_REC, "JIT64 PC: %08x SRR0: %08x SRR1: %08x FPSCR: %08x MSR: %08x LR: %08x %s %s",
-		PC, SRR0, SRR1, PowerPC::ppcState.fpscr, PowerPC::ppcState.msr, PowerPC::ppcState.spr[8], regs.c_str(), fregs.c_str());
+  DEBUG_LOG_FMT(DYNA_REC, "JIT64 PC: {:08x} SRR0: {:08x} SRR1: {:08x} FPSCR: {:08x} MSR: {:08x} LR: {:08x} {} {}",
+    m_ppc_state.pc, SRR0(m_ppc_state), SRR1(m_ppc_state), m_ppc_state.fpscr.Hex,
+    m_ppc_state.msr.Hex, m_ppc_state.spr[8], regs, fregs);
 }
 
 void JitArm::Jit(u32 em_address)
 {
-	if (GetSpaceLeft() < 0x10000 || blocks.IsFull() || SConfig::GetInstance().m_LocalCoreStartupParameter.bJITNoBlockCache)
-	{
-		ClearCache();
-	}
-
-	int block_num = blocks.AllocateBlock(PowerPC::ppcState.pc);
-	JitBlock *b = blocks.GetBlock(block_num);
-	const u8* BlockPtr = DoJit(PowerPC::ppcState.pc, &code_buffer, b);
-	blocks.FinalizeBlock(block_num, jo.enableBlocklink, BlockPtr);
+  Jit(em_address, true);
 }
+
+void JitArm::Jit(u32 em_address, bool clear_cache_and_retry_on_failure)
+{
+  printf("JIT ARM32: JITing at address %08x, current PC is %08x\n", em_address, m_ppc_state.pc);
+  fflush(stdout);
+
+  if (IsAlmostFull() || SConfig::GetInstance().bJITNoBlockCache)
+  {
+    ClearCache();
+  }
+  FreeRanges();
+
+  const Common::ScopedJITPageWriteAndNoExecute enable_jit_page_writes(GetRegionPtr());
+
+  std::size_t block_size = m_code_buffer.size();
+
+  auto& cpu = m_system.GetCPU();
+
+  if (IsDebuggingEnabled())
+  {
+    // We can link blocks as long as we are not single stepping
+    SetBlockLinkingEnabled(true);
+    SetOptimizationEnabled(true);
+
+    if (!IsProfilingEnabled())
+    {
+      if (cpu.IsStepping())
+      {
+        block_size = 1;
+
+        // Do not link this block to other blocks while single stepping
+        SetBlockLinkingEnabled(false);
+        SetOptimizationEnabled(false);
+      }
+      Trace();
+    }
+  }
+
+  // Analyze the block, collect all instructions it is made of (including inlining,
+  // if that is enabled), reorder instructions for optimal performance, and join joinable
+  // instructions.
+  const u32 nextPC = analyzer.Analyze(em_address, &code_block, &m_code_buffer, block_size);
+
+  if (code_block.m_memory_exception)
+  {
+    // Address of instruction could not be translated
+    m_ppc_state.npc = nextPC;
+    m_ppc_state.Exceptions |= EXCEPTION_ISI;
+    m_system.GetPowerPC().CheckExceptions();
+    m_system.GetJitInterface().UpdateMembase();
+    WARN_LOG_FMT(POWERPC, "ISI exception at {:#010x}", nextPC);
+    return;
+  }
+
+  if (SetEmitterStateToFreeCodeRegion())
+  {
+    u8* near_start = GetWritableCodePtr();
+    u8* far_start = m_far_code.GetWritableCodePtr();
+
+    JitBlock* b = blocks.AllocateBlock(em_address);
+
+    printf("JIT ARM32: Allocated block at %p for PC %08x\n", b, em_address);
+    fflush(stdout);
+
+    if (DoJit(em_address, b, nextPC))
+    {
+      LogNumFromJIT("Block start:", js.curBlock->effectiveAddress);
+
+      if (!js.curBlock->original_buffer.empty())
+      {
+        auto [addr, instr] = js.curBlock->original_buffer.front();
+        LogNumFromJIT("First opcode address:", addr);
+        LogNumFromJIT("First opcode value:", instr.hex);
+      }
+
+      u8* near_end = GetWritableCodePtr();
+
+      // Mark used memory region in the local free set
+      if (near_start != near_end)
+        m_free_ranges_near.erase(near_start, near_end);
+
+      u8* far_end = m_far_code.GetWritableCodePtr();
+      if (far_start != far_end)
+        m_free_ranges_far.erase(far_start, far_end);
+
+      b->near_begin = const_cast<u8*>(near_start);
+      b->near_end = const_cast<u8*>(near_end);
+      b->far_begin = const_cast<u8*>(far_start);
+      b->far_end = const_cast<u8*>(far_end);
+
+      blocks.FinalizeBlock(*b, jo.enableBlocklink, code_block, m_code_buffer);
+
+      printf("JIT ARM32: Complete for PC %08x\n", em_address);
+      fflush(stdout);
+
+      return;
+    }
+  }
+
+  if (clear_cache_and_retry_on_failure)
+  {
+    // Code generation failed due to not enough free space in either the near or far code regions.
+    // Clear the entire JIT cache and retry.
+    printf("flushing code caches, please report if this happens a lot\n");
+    fflush(stdout);
+    WARN_LOG_FMT(DYNA_REC, "flushing code caches, please report if this happens a lot");
+    ClearCache();
+    Jit(em_address, false);
+    return;
+  }
+
+  PanicAlertFmtT("JIT failed to find code space after a cache clear. This should never happen. "
+                 "Please report this incident on the bug tracker. Dolphin will now exit.");
+  exit(-1);
+}
+
+bool JitArm::SetEmitterStateToFreeCodeRegion()
+{
+  // Try to find the largest free memory block in the near code region.
+  const auto free_near = m_free_ranges_near.by_size_begin();
+  if (free_near != m_free_ranges_near.by_size_end())
+  {
+    // Point the ARM emitter at that free block.
+    m_near_code.SetCodePtr(free_near.from(), free_near.to());
+    return true;
+  }
+
+  // If no near block is available, try the far region.
+  const auto free_far = m_free_ranges_far.by_size_begin();
+  if (free_far != m_free_ranges_far.by_size_end())
+  {
+    // Point the ARM emitter at that free block.
+    m_far_code.SetCodePtr(free_far.from(), free_far.to());
+    return true;
+  }
+
+  // Nothing available in either region.
+  printf("Failed to find free memory region in near or far code region.\n");
+  fflush(stdout);
+  WARN_LOG_FMT(DYNA_REC, "Failed to find free memory region in near or far code region.");
+
+  return false;
+}
+
 void JitArm::Break(UGeckoInstruction inst)
 {
-	ERROR_LOG(DYNA_REC, "%s called a Break instruction!", PPCTables::GetInstructionName(inst));
-	BKPT(0x4444);
+  printf("JIT ARM32: Break instruction called at PC %08x\n", m_ppc_state.pc);
+  fflush(stdout);
+
+  ERROR_LOG_FMT(DYNA_REC, "{} called a Break instruction!",
+    PPCTables::GetInstructionName(inst, m_ppc_state.pc));
+  BKPT(0x4444);
 }
 
 void JitArm::BeginTimeProfile(JitBlock* b)
 {
-	b->ticCounter = 0;
-	b->ticStart = 0;
-	b->ticStop = 0;
+  /*b->ticCounter = 0;
+  b->ticStart = 0;
+  b->ticStop = 0;
 
-	// Performance counters are bit finnicky on ARM
-	// We must first enable and program the PMU before using it
-	// This is a per core operation so with thread scheduling we may jump to a core we haven't enabled PMU yet
-	// Work around this by enabling PMU each time at the start of a block
-	// Some ARM CPUs are getting absurd core counts(48+!)
-	// We have to reset counters at the start of every block anyway, so may as well.
-	// One thing to note about performance counters on ARM
-	// The kernel can block access to these co-processor registers
-	// In the case that this happens, these will generate a SIGILL
+  // Performance counters are bit finnicky on ARM
+  // We must first enable and program the PMU before using it
+  // This is a per core operation so with thread scheduling we may jump to a core we haven't enabled PMU yet
+  // Work around this by enabling PMU each time at the start of a block
+  // Some ARM CPUs are getting absurd core counts(48+!)
+  // We have to reset counters at the start of every block anyway, so may as well.
+  // One thing to note about performance counters on ARM
+  // The kernel can block access to these co-processor registers
+  // In the case that this happens, these will generate a SIGILL
 
-	// Refer to the ARM ARM about PMCR for what these do exactly
-	enum
-	{
-		PERF_OPTION_ENABLE = (1 << 0),
-		PERF_OPTION_RESET_CR = (1 << 1),
-		PERF_OPTION_RESET_CCR = (1 << 2),
-		PERF_OPTION_DIVIDER_MODE = (1 << 3),
-		PERF_OPTION_EXPORT_ENABLE = (1 << 4),
-	};
-	const u32 perf_options =
-		PERF_OPTION_ENABLE |
-		PERF_OPTION_RESET_CR |
-		PERF_OPTION_RESET_CCR |
-		PERF_OPTION_EXPORT_ENABLE;
-	MOVI2R(R0, perf_options);
-	// Programs the PMCR
-	MCR(15, 0, R0, 9, 12, 0);
+  // Refer to the ARM ARM about PMCR for what these do exactly
+  enum
+  {
+    PERF_OPTION_ENABLE = (1 << 0),
+    PERF_OPTION_RESET_CR = (1 << 1),
+    PERF_OPTION_RESET_CCR = (1 << 2),
+    PERF_OPTION_DIVIDER_MODE = (1 << 3),
+    PERF_OPTION_EXPORT_ENABLE = (1 << 4),
+  };
+  const u32 perf_options =
+    PERF_OPTION_ENABLE |
+    PERF_OPTION_RESET_CR |
+    PERF_OPTION_RESET_CCR |
+    PERF_OPTION_EXPORT_ENABLE;
+  MOVI2R(R0, perf_options);
+  // Programs the PMCR
+  MCR(15, 0, R0, 9, 12, 0);
 
-	MOVI2R(R0, 0x8000000F);
-	// Enables all counters
-	MCR(15, 0, R0, 9, 12, 1);
-	// Clears all counter overflows
-	MCR(15, 0, R0, 9, 12, 3);
+  MOVI2R(R0, 0x8000000F);
+  // Enables all counters
+  MCR(15, 0, R0, 9, 12, 1);
+  // Clears all counter overflows
+  MCR(15, 0, R0, 9, 12, 3);
 
-	// Gets the cycle counter
-	MRC(15, 0, R1, 9, 13, 0);
-	MOVI2R(R0, (u32)&b->ticStart);
-	STR(R1, R0, 0);
+  // Gets the cycle counter
+  MRC(15, 0, R1, 9, 13, 0);
+  MOVI2R(R0, (u32)&b->ticStart);
+  STR(R1, R0, 0);*/ // TODO WEBOS
 }
 
 void JitArm::EndTimeProfile(JitBlock* b)
 {
-	// Gets the cycle counter
-	MRC(15, 0, R1, 9, 13, 0);
-	MOVI2R(R0, (u32)&b->ticStop);
-	STR(R1, R0, 0);
+  // Gets the cycle counter
+  /*MRC(15, 0, R1, 9, 13, 0);
+  MOVI2R(R0, (u32)&b->ticStop);
+  STR(R1, R0, 0);
 
-	MOVI2R(R0, (u32)&b->ticStart);
-	MOVI2R(R14, (u32)asm_routines.m_increment_profile_counter);
-	BL(R14);
+  MOVI2R(R0, (u32)&b->ticStart);
+  MOVI2R(R14, (u32)m_increment_profile_counter);
+  BL(R14);*/ //TODO WEBOS
 }
 
-const u8* JitArm::DoJit(u32 em_address, PPCAnalyst::CodeBuffer *code_buf, JitBlock *b)
+bool JitArm::DoJit(u32 em_address, JitBlock* b, u32 nextPC)
 {
-	int blockSize = code_buf->GetSize();
+  // Per-block state
+  js.isLastInstruction = false;
+  js.firstFPInstructionFound = false;
+  js.assumeNoPairedQuantize = false;
+  js.blockStart = em_address;
+  js.fifoBytesSinceCheck = 0;
+  js.mustCheckFifo = false;
+  js.downcountAmount = 0;
+  js.skipInstructions = 0;
+  js.curBlock = b;
+  js.carryFlag = CarryFlag::InPPCState;
+  js.numLoadStoreInst = 0;
+  js.numFloatingPointInst = 0;
 
-	if (SConfig::GetInstance().m_LocalCoreStartupParameter.bEnableDebugging)
-	{
-		// Comment out the following to disable breakpoints (speed-up)
-		if (!Profiler::g_ProfileBlocks)
-		{
-			if (PowerPC::GetState() == PowerPC::CPU_STEPPING)
-				blockSize = 1;
-			Trace();
-		}
-	}
+  b->normalEntry = GetWritableCodePtr();
 
-	if (em_address == 0)
-	{
-		Core::SetState(Core::CORE_PAUSE);
-		PanicAlert("ERROR: Compiling at 0. LR=%08x CTR=%08x", LR, CTR);
-	}
+  // Optional profiling begin
+  if (IsProfilingEnabled() && b->profile_data)
+  {
+    auto rA = gpr.GetScopedReg();
+    auto rB = gpr.GetScopedReg();
+    MOVI2R(rA, (u32)&b->profile_data->run_count);
+    LDR(rB, rA);
+    ADD(rB, rB, 1);
+    STR(rB, rA);
+    BeginTimeProfile(b);
+  }
 
-	js.isLastInstruction = false;
-	js.blockStart = em_address;
-	js.fifoBytesThisBlock = 0;
-	js.curBlock = b;
+  gpr.Start(js.gpa);
+  fpr.Start(js.fpa);
 
-	u32 nextPC = em_address;
-	// Analyze the block, collect all instructions it is made of (including inlining,
-	// if that is enabled), reorder instructions for optimal performance, and join joinable instructions.
-	nextPC = analyzer.Analyze(em_address, &code_block, code_buf, blockSize);
+  if (!js.noSpeculativeConstantsAddresses.contains(js.blockStart))
+  {
+    printf("Calling IntializeSpeculativeConstants\n");
+    fflush(stdout);
+    IntializeSpeculativeConstants();
+  }
+  // Translate instructions
+  for (u32 i = 0; i < code_block.m_num_instructions; ++i)
+  {
+    PPCAnalyst::CodeOp& op = m_code_buffer[i];
 
-	PPCAnalyst::CodeOp *ops = code_buf->codebuffer;
+    js.compilerPC = op.address;
+    js.op = &op;
+    js.fpr_is_store_safe = op.fprIsStoreSafeBeforeInst;
+    js.instructionsLeft = (code_block.m_num_instructions - 1) - i;
+    const GekkoOPInfo* opinfo = op.opinfo;
+    js.downcountAmount += opinfo->num_cycles;
+    js.isLastInstruction = (i == (code_block.m_num_instructions - 1));
 
-	const u8 *start = GetCodePtr();
-	b->checkedEntry = start;
-	b->runCount = 0;
+    // === op.skip / else parity ===
+    if (op.skip)
+    {
+      if (IsDebuggingEnabled())
+      {
+        const auto bw_reg_a = gpr.GetScopedReg();
+        const auto bw_reg_b = gpr.GetScopedReg();
+        WriteBranchWatch<true>(op.address, op.branchTo, op.inst,
+                               bw_reg_a, bw_reg_b,
+                               BitSet32{}, BitSet32{});
+      }
+    }
+    else
+    {
+      // Breakpoint parity
+      if (IsDebuggingEnabled() && !m_system.GetCPU().IsStepping() &&
+          m_system.GetPowerPC().GetBreakPoints().IsAddressBreakPoint(op.address))
+      {
+        FlushCarry(); // ensure carry is in PPCState
+        gpr.Flush();
+        fpr.Flush();
 
-	// Downcount flag check, Only valid for linked blocks
-	{
-		FixupBranch no_downcount = B_CC(CC_PL);
-		ARMReg rA = gpr.GetReg(false);
-		MOVI2R(rA, js.blockStart);
-		STR(rA, R9, PPCSTATE_OFF(pc));
-		MOVI2R(rA, (u32)asm_routines.doTiming);
-		B(rA);
-		SetJumpTarget(no_downcount);
-	}
+        auto rA = gpr.GetScopedReg();
+        MOVI2R(rA, op.address);
+        STR(rA, PPC_REG, PPCSTATE_OFF(pc));
+        STR(rA, PPC_REG, PPCSTATE_OFF(npc));
 
-	const u8 *normalEntry = GetCodePtr();
-	b->normalEntry = normalEntry;
+        MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetPowerPC()));
+        auto cal = gpr.GetScopedReg();
+        MOVI2R(cal, reinterpret_cast<u32>(&PowerPC::CheckAndHandleBreakPointsFromJIT));
+        BLX(cal);
 
-	if (ImHereDebug)
-		QuickCallFunction(R14, (void *)&ImHere); //Used to get a trace of the last few blocks before a crash, sometimes VERY useful
+        auto rS = gpr.GetScopedReg();
+        MOVI2R(rS, reinterpret_cast<u32>(m_system.GetCPU().GetStatePtr()));
+        LDR(R0, rS);
+        FixupBranch no_breakpoint = B_CC(CC_EQ);
 
-	if (js.fpa.any)
-	{
-		// This block uses FPU - needs to add FP exception bailout
-		ARMReg A = gpr.GetReg();
-		ARMReg C = gpr.GetReg();
-		Operand2 Shift(2, 10); // 1 << 13
-		MOVI2R(C, js.blockStart); // R3
-		LDR(A, R9, PPCSTATE_OFF(msr));
-		TST(A, Shift);
-		FixupBranch no_fpe = B_CC(CC_NEQ);
-		STR(C, R9, PPCSTATE_OFF(pc));
+        Cleanup();
+        DoDownCount();
+        B(dispatcher_exit);
 
-		LDR(A, R9, PPCSTATE_OFF(Exceptions));
-		ORR(A, A, EXCEPTION_FPU_UNAVAILABLE);
-		STR(A, R9, PPCSTATE_OFF(Exceptions));
-			QuickCallFunction(A, (void*)&PowerPC::CheckExceptions);
-		LDR(A, R9, PPCSTATE_OFF(npc));
-		STR(A, R9, PPCSTATE_OFF(pc));
+        SetJumpTarget(no_breakpoint);
+      }
 
-		MOVI2R(A, (u32)asm_routines.dispatcher);
-		B(A);
+      if ((opinfo->flags & FL_USE_FPU) && !js.firstFPInstructionFound)
+      {
+        LogNumFromJIT("JIT: FL_USE_FPU was set so setting EXCEPTION_FPU_UNAVAILABLE if appropiate");
+        auto WA = gpr.GetScopedReg();
+        auto WT = gpr.GetScopedReg();
 
-		SetJumpTarget(no_fpe);
-		gpr.Unlock(A, C);
-	}
+        // Load MSR
+        LDR(WA, PPC_REG, IMM(PPCSTATE_OFF(msr)));
 
-	// Conditionally add profiling code.
-	if (Profiler::g_ProfileBlocks)
-	{
-		ARMReg rA = gpr.GetReg();
-		ARMReg rB = gpr.GetReg();
-		MOVI2R(rA, (u32)&b->runCount); // Load in to register
-		LDR(rB, rA); // Load the actual value in to R11.
-		ADD(rB, rB, 1); // Add one to the value
-		STR(rB, rA); // Now store it back in the memory location
-		BeginTimeProfile(b);
-		gpr.Unlock(rA, rB);
-	}
-	gpr.Start(js.gpa);
-	fpr.Start(js.fpa);
-	js.downcountAmount = 0;
+        // Build mask in a GPR using MOVI2R (handles any 32-bit constant)
+        MOVI2R(WT, 1u << 13);
 
-	if (!SConfig::GetInstance().m_LocalCoreStartupParameter.bEnableDebugging)
-		js.downcountAmount += PatchEngine::GetSpeedhackCycles(em_address);
+        // Test bit 13
+        TST(WA, R(WT));
 
-	js.skipInstructions = 0;
-	js.compilerPC = nextPC;
+        // Z==1 (FP disabled) -> jump to far bailout
+        FixupBranch to_far = B_CC(CC_EQ);
 
-	// Translate instructions
-	for (u32 i = 0; i < code_block.m_num_instructions; i++)
-	{
-		js.compilerPC = ops[i].address;
-		js.op = &ops[i];
-		js.instructionNumber = i;
-		const GekkoOPInfo *opinfo = ops[i].opinfo;
-		js.downcountAmount += opinfo->numCycles;
+        SwitchToFarCode();
+        SafeSetJumpTarget(to_far);
 
-		if (i == (code_block.m_num_instructions - 1))
-		{
-			// WARNING - cmp->branch merging will screw this up.
-			js.isLastInstruction = true;
-		}
+        gpr.Flush(FlushMode::FLUSH_MAINTAIN_STATE);
+        fpr.Flush(FlushMode::FLUSH_MAINTAIN_STATE);
 
-		if (jo.optimizeGatherPipe && js.fifoBytesThisBlock >= 32)
-		{
-			js.fifoBytesThisBlock -= 32;
-			PUSH(4, R0, R1, R2, R3);
-			QuickCallFunction(R14, (void*)&GPFifo::FastCheckGatherPipe);
-			POP(4, R0, R1, R2, R3);
-		}
+        LDR(WA, PPC_REG, PPCSTATE_OFF(Exceptions));
+        ORR(WA, WA, EXCEPTION_FPU_UNAVAILABLE);
+        STR(WA, PPC_REG, PPCSTATE_OFF(Exceptions));
 
-		if (!ops[i].skip)
-		{
-				if (jo.memcheck && (opinfo->flags & FL_USE_FPU))
-				{
-					// Don't do this yet
-					BKPT(0x7777);
-				}
-				JitArmTables::CompileInstruction(ops[i]);
+        WriteExceptionExit(js.compilerPC, false, true);
 
-				// If we have a register that will never be used again, flush it.
-				for (int j : ~ops[i].gprInUse)
-					gpr.StoreFromRegister(j);
-				for (int j : ~ops[i].fprInUse)
-					fpr.StoreFromRegister(j);
+        SwitchToNearCode();
 
-				if (jo.memcheck && (opinfo->flags & FL_LOADSTORE))
-				{
-					// Don't do this yet
-					BKPT(0x666);
-				}
-		}
-	}
+        js.firstFPInstructionFound = true;
+      }
 
-	if (code_block.m_memory_exception)
-		BKPT(0x500);
+      if (bJITRegisterCacheOff)
+      {
+        FlushCarry(); // flush before discarding caches
+        gpr.Flush();
+        fpr.Flush();
+      }
 
-	if (code_block.m_broken)
-	{
-		printf("Broken Block going to 0x%08x\n", nextPC);
-		WriteExit(nextPC);
-	}
+      // Compile current instruction
+      CompileInstruction(op);
 
-	b->codeSize = (u32)(GetCodePtr() - start);
-	b->originalSize = code_block.m_num_instructions;
-	FlushIcache();
-	return start;
+      if (js.op->regsOut[0])    // If this instruction writes to r0
+      {
+        // Add logging AFTER the instruction handler
+        auto check_r0 = gpr.GetScopedReg();
+        LDR(check_r0, PPC_REG, PPCSTATE_OFF_GPR(0));
+
+        char msg[128];
+        snprintf(msg, sizeof(msg), "PC=%08x wrote to r0, now:", op.address);
+        LogRegFromJIT(msg, check_r0);
+      }
+
+      js.fpr_is_store_safe = op.fprIsStoreSafeAfterInst;
+
+      // Carry flush parity: if not merging with next integer op
+      if (!CanMergeNextInstructions(1) || js.op[1].opinfo->type != ::OpType::Integer)
+        FlushCarry();
+
+      // Store from registers per liveness
+      for (int j : ~op.gprInUse)
+        gpr.StoreFromRegister(j);
+      for (int j : ~op.fprInUse)
+        fpr.StoreFromRegister(j);
+
+      if (opinfo->flags & FL_LOADSTORE)
+        ++js.numLoadStoreInst;
+      if (opinfo->flags & FL_USE_FPU)
+        ++js.numFloatingPointInst;
+    }
+
+    i += js.skipInstructions;
+    js.skipInstructions = 0;
+  }
+
+  if (code_block.m_broken)
+  {
+    FlushCarry();
+    gpr.Flush();
+    fpr.Flush();
+    WriteExit(nextPC);
+  }
+
+  if (HasWriteFailed() || m_far_code.HasWriteFailed())
+  {
+    if (HasWriteFailed())
+      WARN_LOG_FMT(DYNA_REC, "JIT ran out of space in near code region during code generation.");
+    if (m_far_code.HasWriteFailed())
+      WARN_LOG_FMT(DYNA_REC, "JIT ran out of space in far code region during code generation.");
+    return false;
+  }
+
+  FlushIcache();
+  m_far_code.FlushIcache();
+
+  return true;
+}
+
+void JitArm::EraseSingleBlock(const JitBlock& block)
+{
+  printf( "JIT ARM32: Erasing single block at address %08x\n", block.effectiveAddress);
+  fflush(stdout);
+  blocks.EraseSingleBlock(block);
+  FreeRanges();
+}
+
+std::vector<JitBase::MemoryStats> JitArm::GetMemoryStats() const
+{
+  return {{"near", m_free_ranges_near.get_stats()}};
+}
+
+std::size_t JitArm::DisassembleNearCode(const JitBlock& block, std::ostream& stream) const
+{
+  printf( "JIT ARM32: Disassembling near code for block at address %08x\n", block.effectiveAddress);
+  fflush(stdout);
+
+  return m_disassembler->Disassemble(block.normalEntry, block.near_end, stream);
+}
+
+std::size_t JitArm::DisassembleFarCode(const JitBlock& block, std::ostream& stream) const
+{
+  printf( "JIT ARM32: Disassembling far code for block at address %08x\n", block.effectiveAddress);
+  fflush(stdout);
+  return m_disassembler->Disassemble(block.far_begin, block.far_end, stream);
 }

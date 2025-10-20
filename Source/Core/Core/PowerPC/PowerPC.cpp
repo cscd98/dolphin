@@ -30,6 +30,32 @@
 #include "Core/PowerPC/PPCSymbolDB.h"
 #include "Core/System.h"
 
+#ifndef JIT_DEBUG
+#define JIT_DEBUG 0
+#endif
+
+#ifdef JIT_DEBUG
+  #ifndef JIT_LOG
+  #define JIT_LOG(fmt, ...) \
+    do { \
+        printf(fmt "\n", ##__VA_ARGS__); \
+        fflush(stdout); \
+    } while (0)
+  #endif
+  #define JIT_LOG_NUM(msg, num) \
+    do { \
+        LogNumFromJIT(msg, num); \
+    } while (0)
+  #define JIT_LOG_MSG(msg) \
+    do { \
+        LogNumFromJIT(msg, 0); \
+    } while (0)
+#else
+  #define JIT_LOG(fmt, ...)       do {} while (0)
+  #define JIT_LOG_NUM(msg, num)   do {} while (0)
+  #define JIT_LOG_NUM(msg)        do {} while (0)
+#endif
+
 namespace PowerPC
 {
 double PairedSingle::PS0AsDouble() const
@@ -230,6 +256,8 @@ std::span<const CPUCore> AvailableCPUCores()
   static constexpr auto cpu_cores = {
 #ifdef _M_X86_64
       CPUCore::JIT64,
+#elif defined(_M_ARM_32)
+      CPUCore::JITARM,
 #elif defined(_M_ARM_64)
       CPUCore::JITARM64,
 #endif
@@ -244,6 +272,8 @@ CPUCore DefaultCPUCore()
 {
 #ifdef _M_X86_64
   return CPUCore::JIT64;
+#elif defined(_M_ARM_32)
+  return CPUCore::JITARM;
 #elif defined(_M_ARM_64)
   return CPUCore::JITARM64;
 #else
@@ -392,6 +422,7 @@ void PowerPCManager::SingleStep()
 
 void PowerPCManager::RunLoop()
 {
+  JIT_LOG("PowerPCManager: Starting RunLoop with core %s", GetCPUName());
   m_cpu_core_base->Run();
   Host_UpdateDisasmDialog();
 }
@@ -470,6 +501,24 @@ void UpdatePerformanceMonitor(u32 cycles, u32 num_load_stores, u32 num_fp_inst,
   }
 }
 
+void FMLLogRegHelper(const char* msg, uint32_t value)
+{
+  if (!msg)
+  {
+    fputs("LogRegHelper: null msg\n", stderr);
+    return;
+  }
+
+  constexpr uint32_t INVALID_NUM = 0xFFFFFFFF;
+
+  // Print to stdout
+  if (value != INVALID_NUM)
+    printf("%s 0x%08x\n", msg, value);
+  else
+    printf("%s\n", msg);
+  fflush(stdout);
+}
+
 void PowerPCManager::CheckExceptions()
 {
   u32 exceptions = m_ppc_state.Exceptions;
@@ -494,6 +543,9 @@ void PowerPCManager::CheckExceptions()
   // the instruction class, exceptions should be executed in a given order,
   // which is very different from the one arbitrarily chosen here. See §6.1.5
   // in 6xx_pem.pdf.
+
+  //JIT_LOG("CheckExceptions(): m_ppc_state.pc = 0x%08x, m_ppc_state.npc = 0x%08x",
+  //  m_ppc_state.pc, m_ppc_state.npc);
 
   if (exceptions & EXCEPTION_ISI)
   {
@@ -541,6 +593,9 @@ void PowerPCManager::CheckExceptions()
 
     DEBUG_LOG_FMT(POWERPC, "EXCEPTION_FPU_UNAVAILABLE");
     m_ppc_state.Exceptions &= ~EXCEPTION_FPU_UNAVAILABLE;
+
+    FMLLogRegHelper("CheckExceptions(): EXCEPTION_FPU_UNAVAILABLE - m_ppc_state.pc",
+      m_ppc_state.pc);
   }
   else if (exceptions & EXCEPTION_FAKE_MEMCHECK_HIT)
   {

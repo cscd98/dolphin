@@ -13,7 +13,6 @@
 #include "Core/PowerPC/PPCTables.h"
 
 #include "Core/PowerPC/JitArm32/Jit.h"
-#include "Core/PowerPC/JitArm32/JitAsm.h"
 #include "Core/PowerPC/JitArm32/JitFPRCache.h"
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 
@@ -21,8 +20,16 @@ using namespace ArmGen;
 
 void JitArm::lfXX(UGeckoInstruction inst)
 {
+	JIT_LOG_MSG("lfXX!");
+
+	JIT_ERR(
+        "[lfXX] PC=0x%08x OPCD=%u SUBOP10=%u RA=%u RB=%u FS=%u offset=%d",
+        js.compilerPC, inst.OPCD, inst.SUBOP10, inst.RA, inst.RB, inst.FS, inst.SIMM_16);
+
 	INSTRUCTION_START
 	JITDISABLE(bJITLoadStoreFloatingOff);
+
+	JIT_LOG_MSG("Not using interpreter");
 
 	ARMReg RA;
 
@@ -39,46 +46,56 @@ void JitArm::lfXX(UGeckoInstruction inst)
 			switch (inst.SUBOP10)
 			{
 				case 567: // lfsux
-					flags |= BackPatchInfo::FLAG_SIZE_F32;
+					flags |= BackPatchInfo::FLAG_SIZE_32;
 					update = true;
 					offsetReg = b;
 				break;
 				case 535: // lfsx
-					flags |= BackPatchInfo::FLAG_SIZE_F32;
+					flags |= BackPatchInfo::FLAG_SIZE_32;
 					offsetReg = b;
 				break;
 				case 631: // lfdux
-					flags |= BackPatchInfo::FLAG_SIZE_F64;
+					flags |= BackPatchInfo::FLAG_SIZE_64;
 					update = true;
 					offsetReg = b;
 				break;
 				case 599: // lfdx
-					flags |= BackPatchInfo::FLAG_SIZE_F64;
+					flags |= BackPatchInfo::FLAG_SIZE_64;
 					offsetReg = b;
 				break;
 			}
 		break;
 		case 49: // lfsu
-			flags |= BackPatchInfo::FLAG_SIZE_F32;
+			flags |= BackPatchInfo::FLAG_SIZE_32;
 			update = true;
 		break;
 		case 48: // lfs
-			flags |= BackPatchInfo::FLAG_SIZE_F32;
+			flags |= BackPatchInfo::FLAG_SIZE_32;
 		break;
 		case 51: // lfdu
-			flags |= BackPatchInfo::FLAG_SIZE_F64;
+			flags |= BackPatchInfo::FLAG_SIZE_64;
 			update = true;
 		break;
 		case 50: // lfd
-			flags |= BackPatchInfo::FLAG_SIZE_F64;
+			flags |= BackPatchInfo::FLAG_SIZE_64;
 		break;
 	}
 
-	ARMReg v0 = fpr.R0(inst.FD, false), v1 = INVALID_REG;
-	if (flags & BackPatchInfo::FLAG_SIZE_F32)
-		v1 = fpr.R1(inst.FD, false);
+	// Determine the FPR type based on the operation
+	// SIZE_32 loads to both PS0 and PS1 (duplicated single)
+	// SIZE_64 loads only to PS0 (lower pair)
+	FPRRegType fpr_type = (flags & BackPatchInfo::FLAG_SIZE_32) ? FPRRegType::DuplicatedSingle : FPRRegType::LowerPair;
 
-	ARMReg rA = R11;
+	ARMReg v0 = fpr.RW0(inst.FD, fpr_type);
+	ARMReg v1 = INVALID_REG;
+	if (flags & BackPatchInfo::FLAG_SIZE_32)
+		v1 = fpr.RW1(inst.FD, fpr_type);
+
+	ARMReg rA = gpr.GetScopedReg();
+
+	JIT_LOG_REG("[lfXX] GetScopedReg returned", rA);
+	JIT_ERR("[lfXX] GetScopedReg returned R%d", rA);
+
 	ARMReg addr = R12;
 
 	u32 imm_addr = 0;
@@ -174,22 +191,33 @@ void JitArm::lfXX(UGeckoInstruction inst)
 	if (is_immediate)
 		MOVI2R(addr, imm_addr);
 
-	LDR(rA, R9, PPCSTATE_OFF(Exceptions));
+	LDR(rA, PPC_REG, PPCSTATE_OFF(Exceptions));
 	CMP(rA, EXCEPTION_DSI);
 	FixupBranch DoNotLoad = B_CC(CC_EQ);
 
 	if (update)
 		MOV(RA, addr);
 
+	MemAccessMode mode = MemAccessMode::AlwaysSlowAccess;
+
+	if(jo.fastmem)
+	{
+		mode = MemAccessMode::AlwaysFastAccess;
+	}
+
 	EmitBackpatchRoutine(this, flags,
-			jo.fastmem,
-			!(is_immediate && PowerPC::IsOptimizableRAMAddress(imm_addr)), v0, v1);
+			mode,
+			!(is_immediate && m_mmu.IsOptimizableRAMAddress(imm_addr, BackPatchInfo::GetFlagSize(flags))), v0, v1);
 
 	SetJumpTarget(DoNotLoad);
 }
 
 void JitArm::stfXX(UGeckoInstruction inst)
 {
+	JIT_ERR(
+        "[stfXX] PC=0x%08x OPCD=%u SUBOP10=%u RA=%u RB=%u FS=%u offset=%d",
+        js.compilerPC, inst.OPCD, inst.SUBOP10, inst.RA, inst.RB, inst.FS, inst.SIMM_16);
+
 	INSTRUCTION_START
 	JITDISABLE(bJITLoadStoreFloatingOff);
 
@@ -197,10 +225,16 @@ void JitArm::stfXX(UGeckoInstruction inst)
 
 	u32 a = inst.RA, b = inst.RB;
 
+	JIT_ERR(
+        "[stfXX] setting a and b");
+
 	s32 offset = inst.SIMM_16;
 	u32 flags = BackPatchInfo::FLAG_STORE;
 	bool update = false;
 	s32 offsetReg = -1;
+
+		JIT_ERR(
+        "[stfXX] switch");
 
 	switch (inst.OPCD)
 	{
@@ -208,43 +242,54 @@ void JitArm::stfXX(UGeckoInstruction inst)
 			switch (inst.SUBOP10)
 			{
 				case 663: // stfsx
-					flags |= BackPatchInfo::FLAG_SIZE_F32;
+					flags |= BackPatchInfo::FLAG_SIZE_32;
 					offsetReg = b;
 				break;
 				case 695: // stfsux
-					flags |= BackPatchInfo::FLAG_SIZE_F32;
+					flags |= BackPatchInfo::FLAG_SIZE_32;
 					offsetReg = b;
 				break;
 				case 727: // stfdx
-					flags |= BackPatchInfo::FLAG_SIZE_F64;
+					flags |= BackPatchInfo::FLAG_SIZE_64;
 					offsetReg = b;
 				break;
 				case 759: // stfdux
-					flags |= BackPatchInfo::FLAG_SIZE_F64;
+					flags |= BackPatchInfo::FLAG_SIZE_64;
 					update = true;
 					offsetReg = b;
 				break;
 			}
 		break;
 		case 53: // stfsu
-			flags |= BackPatchInfo::FLAG_SIZE_F32;
+			flags |= BackPatchInfo::FLAG_SIZE_32;
 			update = true;
 		break;
 		case 52: // stfs
-			flags |= BackPatchInfo::FLAG_SIZE_F32;
+			flags |= BackPatchInfo::FLAG_SIZE_32;
 		break;
 		case 55: // stfdu
-			flags |= BackPatchInfo::FLAG_SIZE_F64;
+			flags |= BackPatchInfo::FLAG_SIZE_64;
 			update = true;
 		break;
 		case 54: // stfd
-			flags |= BackPatchInfo::FLAG_SIZE_F64;
+			flags |= BackPatchInfo::FLAG_SIZE_64;
 		break;
 	}
 
-	ARMReg v0 = fpr.R0(inst.FS);
+	// Store operations read from FPR
+	// SIZE_32 stores need single precision (use LowerPairSingle if available, otherwise LowerPair)
+	// SIZE_64 stores use double precision (LowerPair)
+	JIT_ERR("[stfXX] setting fpr_type");
+	FPRRegType fpr_type = (flags & BackPatchInfo::FLAG_SIZE_32) ? FPRRegType::LowerPairSingle : FPRRegType::LowerPair;
 
-	ARMReg rA = R11;
+		JIT_ERR("[stfXX] setting v0");
+
+	ARMReg v0 = fpr.R0(inst.FS, fpr_type);
+
+	ARMReg rA = gpr.GetScopedReg();
+	JIT_ERR("[stfXX] GetScopedReg returned R%d", rA);
+	JIT_LOG_REG("[stfXX] GetScopedReg returned", rA);
+
 	ARMReg addr = R12;
 
 	u32 imm_addr = 0;
@@ -335,12 +380,21 @@ void JitArm::stfXX(UGeckoInstruction inst)
 	}
 
 	if (is_immediate)
+	{
+		JIT_ERR("[stfXX] Immediate EA=0x%08x", imm_addr);
+	}
+	else
+	{
+		JIT_ERR("[stfXX] EA in register=%d", addr);
+	}
+
+	if (is_immediate)
 		MOVI2R(addr, imm_addr);
 
 	if (update)
 	{
 		RA = gpr.R(a);
-		LDR(rA, R9, PPCSTATE_OFF(Exceptions));
+		LDR(rA, PPC_REG, PPCSTATE_OFF(Exceptions));
 		CMP(rA, EXCEPTION_DSI);
 
 		SetCC(CC_NEQ);
@@ -348,20 +402,27 @@ void JitArm::stfXX(UGeckoInstruction inst)
 		SetCC();
 	}
 
+	MemAccessMode mode = MemAccessMode::AlwaysSlowAccess;
+
+	if(jo.fastmem)
+	{
+		mode = MemAccessMode::AlwaysFastAccess;
+	}
+
 	if (is_immediate)
 	{
-		if (jit->jo.optimizeGatherPipe && PowerPC::IsOptimizableGatherPipeWrite(imm_addr))
+		if (jo.optimizeGatherPipe && m_mmu.IsOptimizableGatherPipeWrite(imm_addr))
 		{
 			int accessSize;
-			if (flags & BackPatchInfo::FLAG_SIZE_F64)
+			if (flags & BackPatchInfo::FLAG_SIZE_64)
 				accessSize = 64;
 			else
 				accessSize = 32;
 
-			MOVI2R(R14, (u32)&GPFifo::m_gatherPipeCount);
-			MOVI2R(R10, (u32)GPFifo::m_gatherPipe);
-			LDR(R11, R14);
-			ADD(R10, R10, R11);
+			MOVI2R(R14, (u32)&m_ppc_state.gather_pipe_ptr);
+			MOVI2R(R10, (u32)m_ppc_state.gather_pipe_base_ptr);
+			LDR(rA, R14);
+			ADD(R10, R10, rA);
 			NEONXEmitter nemit(this);
 			if (accessSize == 64)
 			{
@@ -379,25 +440,44 @@ void JitArm::stfXX(UGeckoInstruction inst)
 				VMOV(addr, S0);
 				STR(addr, R10);
 			}
-			ADD(R11, R11, accessSize >> 3);
-			STR(R11, R14);
-			jit->js.fifoBytesThisBlock += accessSize >> 3;
+			ADD(rA, rA, accessSize >> 3);
+			STR(rA, R14);
+			js.fifoBytesSinceCheck += accessSize >> 3;
 
 		}
-		else if (PowerPC::IsOptimizableRAMAddress(imm_addr))
+		else if (m_mmu.IsOptimizableRAMAddress(imm_addr, BackPatchInfo::GetFlagSize(flags)))
 		{
 			MOVI2R(addr, imm_addr);
-			EmitBackpatchRoutine(this, flags, jo.fastmem, false, v0);
+
+			JIT_ERR(
+					"[stfXX] Emitting store (optimize ram address): size=%s EA=%s flags=0x%x",
+					(flags & BackPatchInfo::FLAG_SIZE_64) ? "64" : "32",
+					is_immediate ? "imm" : "reg",
+					flags);
+
+			EmitBackpatchRoutine(this, flags, mode, false, v0);
 		}
 		else
 		{
 			MOVI2R(addr, imm_addr);
-			EmitBackpatchRoutine(this, flags, false, false, v0);
+
+			JIT_ERR(
+					"[stfXX] Emitting store (slow): size=%s EA=%s flags=0x%x",
+					(flags & BackPatchInfo::FLAG_SIZE_64) ? "64" : "32",
+					is_immediate ? "imm" : "reg",
+					flags);
+
+			EmitBackpatchRoutine(this, flags, MemAccessMode::AlwaysSlowAccess, false, v0);
 		}
 	}
 	else
 	{
-		EmitBackpatchRoutine(this, flags, jo.fastmem, true, v0);
+		JIT_ERR(
+        "[stfXX] Emitting store (last else): size=%s EA=%s flags=0x%x",
+        (flags & BackPatchInfo::FLAG_SIZE_64) ? "64" : "32",
+        is_immediate ? "imm" : "reg",
+        flags);
+
+		EmitBackpatchRoutine(this, flags, mode, true, v0);
 	}
 }
-

@@ -41,4 +41,9 @@ struct BackPatchInfo
 
     return size;
   }
+
+  // TODO: WEBOS - deleted
+  u32 m_fastmem_size;
+	u32 m_fastmem_trouble_inst_offset;
+	u32 m_slowmem_size;
 };

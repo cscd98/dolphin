@@ -24,6 +24,12 @@
 #include "Common/WorkQueueThread.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 
+#ifdef __WEBOS__
+#ifndef INPUT_PROP_ACCELEROMETER
+#define INPUT_PROP_ACCELEROMETER 0x02
+#endif
+#endif
+
 namespace ciface::evdev
 {
 class InputBackend final : public ciface::InputBackend

@@ -25,14 +25,15 @@ bool GLContextLR::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core
 
   switch (Libretro::Video::hw_render.context_type)
   {
-  case RETRO_HW_CONTEXT_OPENGLES3:
-    m_opengl_mode = Mode::OpenGLES;
-    break;
-  case RETRO_HW_CONTEXT_OPENGL_CORE:
-  case RETRO_HW_CONTEXT_OPENGL:
-  default:
-    m_opengl_mode = Mode::OpenGL;
-    break;
+    case RETRO_HW_CONTEXT_OPENGLES_VERSION:
+    case RETRO_HW_CONTEXT_OPENGLES3:
+      m_opengl_mode = Mode::OpenGLES;
+      break;
+    case RETRO_HW_CONTEXT_OPENGL_CORE:
+    case RETRO_HW_CONTEXT_OPENGL:
+    default:
+      m_opengl_mode = Mode::OpenGL;
+      break;
   }
 
   if (!g_context_status.IsReady())

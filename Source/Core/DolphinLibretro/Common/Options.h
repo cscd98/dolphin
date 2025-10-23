@@ -90,6 +90,27 @@ private:
   std::vector<std::pair<std::string, T>> m_list;
 };
 
+inline std::string CPUCoreToString(PowerPC::CPUCore core)
+{
+  switch (core)
+  {
+    case PowerPC::CPUCore::Interpreter:
+      return "Interpreter";
+    case PowerPC::CPUCore::CachedInterpreter:
+       return "Cached Interpreter";
+    case PowerPC::CPUCore::JIT64:
+      return "JIT64";
+    case PowerPC::CPUCore::JITARM64:
+      return "JIT ARM64";
+#ifdef _M_ARM_32
+    //case PowerPC::CPUCore::JITARM:
+    //  return "JIT ARM32";
+#endif
+  }
+
+  return "";
+}
+
 // ======================================================
 // Core
 // ======================================================

@@ -8,6 +8,6 @@ bool g_emuthread_launched = false;
 namespace Video
 {
 retro_video_refresh_t video_cb = nullptr;
-retro_hw_render_callback hw_render;
+retro_hw_render_callback hw_render{};
 }  // namespace Video
 }  // namespace Libretro

@@ -79,6 +79,10 @@ void Init()
       return;
     if (SetHWRender(RETRO_HW_CONTEXT_OPENGL))
       return;
+    if (SetHWRender(RETRO_HW_CONTEXT_OPENGLES_VERSION, 3, 2))
+      return;
+    if (SetHWRender(RETRO_HW_CONTEXT_OPENGLES_VERSION, 3, 1))
+      return;
     if (SetHWRender(RETRO_HW_CONTEXT_OPENGLES3))
       return;
 #ifdef _WIN32
@@ -97,7 +101,7 @@ void Init()
     Config::SetBase(Config::MAIN_GFX_BACKEND, "Null");
 }
 
-bool SetHWRender(retro_hw_context_type type)
+bool SetHWRender(retro_hw_context_type type, const int version_major, const int version_minor)
 {
   DEBUG_LOG_FMT(VIDEO, "Video - SetHWRender!");
 
@@ -111,8 +115,8 @@ bool SetHWRender(retro_hw_context_type type)
   {
   case RETRO_HW_CONTEXT_OPENGL_CORE:
     // minimum requirements to run is opengl 3.3 (RA will try to use highest version available anyway)
-    hw_render.version_major = 3;
-    hw_render.version_minor = 3;
+    hw_render.version_major = (version_major != -1) ? version_major : 3;
+    hw_render.version_minor = (version_minor != -1) ? version_minor : 3;
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {
       Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
@@ -121,16 +125,21 @@ bool SetHWRender(retro_hw_context_type type)
       WARN_LOG_FMT(VIDEO, "Video - SetHWRender - failed to set hw renderer for OpenGL Core");
     }
     break;
+  case RETRO_HW_CONTEXT_OPENGLES_VERSION:
   case RETRO_HW_CONTEXT_OPENGLES3:
   case RETRO_HW_CONTEXT_OPENGL:
   {
     // when using RETRO_HW_CONTEXT_OPENGL you can't set version above 3.0 (RA will try to use highest version available anyway)
     // dolphin support OpenGL ES 3.0 too (no support for 2.0) so we are good
-    hw_render.version_major = 3;
-    hw_render.version_minor = 0;
+    hw_render.version_major = (version_major != -1) ? version_major : 3;
+    hw_render.version_minor = (version_minor != -1) ? version_minor : 0;
 
-    const char* api_name = (type == RETRO_HW_CONTEXT_OPENGLES3)
-      ? "OpenGL ES 3.0+" : "OpenGL 3.0+";
+    std::string api_name =
+      (type == RETRO_HW_CONTEXT_OPENGLES3 || type == RETRO_HW_CONTEXT_OPENGLES_VERSION)
+          ? "OpenGL ES " + std::to_string(hw_render.version_major) + "." +
+                std::to_string(hw_render.version_minor)
+          : "OpenGL " + std::to_string(hw_render.version_major) + "." +
+                std::to_string(hw_render.version_minor);
 
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {

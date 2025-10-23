@@ -31,6 +31,7 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/Assets/CustomResourceManager.h"
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/OnScreenDisplay.h"
 
 #ifdef _MSC_VER
 #include <filesystem>
@@ -348,9 +349,11 @@ bool retro_load_game(const struct retro_game_info* game)
     }
 
     Config::SetCurrent(Config::GFX_VERTEX_LOADER_TYPE, VertexLoaderType::Software);
+
+    OSD::AddMessage("CPU: Just in time compiler disabled as unavailable on your system", OSD::Duration::NORMAL);
   }
 #endif
-
+  INFO_LOG_FMT(BOOT, "CPU Core: {}", Libretro::Options::CPUCoreToString(Config::Get(Config::MAIN_CPU_CORE)));
   INFO_LOG_FMT(BOOT, "Fastmem enabled = {}", (Config::Get(Config::MAIN_FASTMEM)) ? "Yes" : "No");
   INFO_LOG_FMT(BOOT, "JIT debug enabled = {}", Config::IsDebuggingEnabled() ? "Yes" : "No");
 

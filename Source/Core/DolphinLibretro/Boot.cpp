@@ -128,6 +128,8 @@ bool retro_load_game(const struct retro_game_info* game)
   Config::SetCurrent(Config::MAIN_FASTMEM_ARENA,
                      Libretro::GetOption<bool>(core::FASTMEM_ARENA, /*def=*/true));
 #endif
+  Config::SetCurrent(Config::MAIN_ACCURATE_CPU_CACHE,
+                     Libretro::GetOption<bool>(core::MAIN_ACCURATE_CPU_CACHE, /*def=*/false));
   Config::SetCurrent(Config::MAIN_DSP_HLE,
                      Libretro::GetOption<bool>(audio::DSP_HLE, /*def=*/true));
 

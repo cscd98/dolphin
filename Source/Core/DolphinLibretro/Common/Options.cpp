@@ -199,6 +199,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "enabled"
   },
   {
+    Libretro::Options::core::MAIN_ACCURATE_CPU_CACHE,
+    "Accurate CPU cache",
+    nullptr,
+    "Enabled - fast, Disabled - guarantees correctness involving cache behaviour.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
     Libretro::Options::audio::DSP_HLE,
     "DSP HLE",
     nullptr,

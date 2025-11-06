@@ -22,6 +22,9 @@
 #include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/System.h"
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/Audio.h"
+#endif
 
 namespace AudioCommon
 {
@@ -45,6 +48,10 @@ static std::unique_ptr<SoundStream> CreateSoundStreamForBackend(std::string_view
 #ifdef _MSC_VER
   else if (backend == BACKEND_WASAPI && WASAPIStream::IsValid())
     return std::make_unique<WASAPIStream>();
+#endif
+#ifdef __LIBRETRO__
+  else if (backend == BACKEND_LIBRETRO && Libretro::Audio::Stream::IsValid())
+    return std::make_unique<Libretro::Audio::Stream>();
 #endif
   return {};
 }
@@ -98,19 +105,19 @@ void ShutdownSoundStream(Core::System& system)
 
 std::string GetDefaultSoundBackend()
 {
-#if defined(ANDROID)
+#if defined(__LIBRETRO__)
+  return BACKEND_LIBRETRO;
+#elif defined(ANDROID)
   return BACKEND_OPENSLES;
+#elif defined(__linux__)
+  if (AlsaSound::IsValid())
+    return BACKEND_ALSA;
 #else
   if (CubebStream::IsValid())
     return BACKEND_CUBEB;
-#endif
-
-#if defined(__linux__)
-  if (AlsaSound::IsValid())
-    return BACKEND_ALSA;
-#endif
 
   return BACKEND_NULLSOUND;
+#endif
 }
 
 DPL2Quality GetDefaultDPL2Quality()
@@ -136,6 +143,10 @@ std::vector<std::string> GetSoundBackends()
 #ifdef _MSC_VER
   if (WASAPIStream::IsValid())
     backends.emplace_back(BACKEND_WASAPI);
+#endif
+#ifdef __LIBRETRO__
+  if (Libretro::Audio::Stream::IsValid())
+    backends.emplace_back(BACKEND_LIBRETRO);
 #endif
   return backends;
 }

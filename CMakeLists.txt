@@ -778,7 +778,7 @@ if(ENABLE_CUBEB)
   add_definitions(-DHAVE_CUBEB)
 endif()
 
-if(NOT ANDROID AND NOT IOS AND NOT LIBRETRO)
+if(NOT ANDROID AND NOT IOS)
   dolphin_find_optional_system_library_pkgconfig(
     LibUSB libusb-1.0 LibUSB::LibUSB Externals/libusb
   )
@@ -805,7 +805,7 @@ if(NOT WIN32)
   endif()
 endif()
 
-if(NOT ANDROID AND NOT MINGW AND NOT IOS)
+if(NOT ANDROID AND NOT IOS)
   dolphin_find_optional_system_library(HIDAPI Externals/hidapi)
 endif()
 

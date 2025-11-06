@@ -493,7 +493,7 @@ bool CreateDevice(retro_vulkan_context* context, VkInstance instance, VkPhysical
                          const char** required_device_layers, unsigned num_required_device_layers,
                          const VkPhysicalDeviceFeatures* required_features)
 {
-  assert(g_video_backend->GetName() == "Vulkan");
+  assert(g_video_backend->GetConfigName() == "Vulkan");
 
   Vulkan::LoadVulkanLibrary();
 

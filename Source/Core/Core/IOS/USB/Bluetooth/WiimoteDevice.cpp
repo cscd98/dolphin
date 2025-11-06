@@ -283,6 +283,10 @@ void WiimoteDevice::EventDisconnect(u8 reason)
 
 void WiimoteDevice::SetSource(WiimoteCommon::HIDWiimote* hid_source)
 {
+#ifdef __LIBRETRO__
+  if(!hid_source)
+    return;
+#endif
   if (m_hid_source && IsConnected())
   {
     Activate(false);

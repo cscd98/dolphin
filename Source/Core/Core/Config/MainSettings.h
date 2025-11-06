@@ -22,6 +22,9 @@
 #define BACKEND_PULSEAUDIO "Pulse"
 #define BACKEND_OPENSLES "OpenSLES"
 #define BACKEND_WASAPI _trans("WASAPI (Exclusive Mode)")
+#ifdef __LIBRETRO__
+  #define BACKEND_LIBRETRO "Libretro"
+#endif
 
 namespace PowerPC
 {

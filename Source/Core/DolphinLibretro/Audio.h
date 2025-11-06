@@ -16,7 +16,6 @@ static constexpr unsigned int MAX_SAMPLES = 512;
 
 void Reset();
 void Init();
-void Start();
 unsigned int GetSampleRate();
 
 class Stream final : public SoundStream

@@ -122,6 +122,7 @@ namespace core {
   constexpr const char MAIN_PRECISION_FRAME_TIMING[] = "dolphin_precision_frame_timing";
   constexpr const char FASTMEM[] = "dolphin_fastmem";
   constexpr const char FASTMEM_ARENA[] = "dolphin_fastmem_arena";
+  constexpr const char MAIN_ACCURATE_CPU_CACHE[] = "dolphin_main_accurate_cpu_cache";
   constexpr const char CHEATS_ENABLED[] = "dolphin_cheats_enabled";
   constexpr const char LANGUAGE[] = "dolphin_language";
   constexpr const char FAST_DISC_SPEED[] = "dolphin_fast_disc_speed";
@@ -146,6 +147,13 @@ namespace main_interface {
   constexpr const char LOG_LEVEL[] = "dolphin_log_level";
   constexpr const char ENABLE_DEBUGGING[] = "dolphin_debug_mode_enabled";
 }  // namespace main_interface
+
+// ======================================================
+// Bluetooth
+// ======================================================
+namespace main_bluetooth {
+  constexpr const char BLUETOOTH_PASSTHROUGH[] = "dolphin_bluetooth_passthrough";
+}  // namespace bluetooth
 
 // ======================================================
 // System Configuration (SYSCONF)

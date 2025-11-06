@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 
 #include "Common/CommonTypes.h"
 #include "Common/Functional.h"
@@ -198,6 +199,9 @@ void UpdateTitle(Core::System& system);
   void EmuThread(Core::System& system, std::unique_ptr<BootParameters> boot,
                  WindowSystemInfo wsi);
   extern std::unique_ptr<BootParameters> g_boot_params;
+  extern std::thread s_emu_thread;
+  extern bool s_frame_step;
+  extern std::atomic<bool> s_stop_frame_step;
 #endif
 
 }  // namespace Core

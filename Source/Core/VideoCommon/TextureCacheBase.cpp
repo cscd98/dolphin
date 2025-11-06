@@ -563,7 +563,7 @@ void TextureCacheBase::DoState(PointerWrap& p)
     DoLoadState(p);
 #ifdef __LIBRETRO__
     if (p.IsReadMode() &&
-        g_video_backend && g_video_backend->GetName() == "OGL")
+        g_video_backend && g_video_backend->GetConfigName() == "OGL")
     {
       Invalidate();
     }

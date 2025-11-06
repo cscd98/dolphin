@@ -97,13 +97,26 @@ namespace Core
 {
 static bool s_wants_determinism;
 
+#ifdef __LIBRETRO__
+static std::vector<Common::ScopeGuard<Common::MoveOnlyFunction<void()>>> s_emu_thread_scope_guards;
+std::unique_ptr<BootParameters> g_boot_params;
+#endif
 // Declarations and definitions
-static std::thread s_emu_thread;
+#ifndef __LIBRETRO__
+static
+#endif
+std::thread s_emu_thread;
 static Common::HookableEvent<Core::State> s_state_changed_event;
 
 static bool s_is_throttler_temp_disabled = false;
-static bool s_frame_step = false;
-static std::atomic<bool> s_stop_frame_step;
+#ifndef __LIBRETRO__
+static
+#endif
+bool s_frame_step = false;
+#ifndef __LIBRETRO__
+static
+#endif
+std::atomic<bool> s_stop_frame_step;
 
 // The value Paused is never stored in this variable. The core is considered to be in
 // the Paused state if this variable is Running and the CPU reports that it's stepping.
@@ -405,6 +418,11 @@ static void CpuThread(Core::System& system, const std::optional<std::string> sav
     }
   }
 
+#ifdef __LIBRETRO__
+  // dont enter the blocking loop if in single core mode
+  if (!system.IsDualCoreMode())
+    return;
+#endif
   // Enter CPU run loop. When we leave it - we are done.
   system.GetCPU().Run();
 
@@ -470,15 +488,21 @@ static void FifoPlayerThread(Core::System& system, const std::optional<std::stri
 
     AsyncRequests::GetInstance()->SetPassthrough(!system.IsDualCoreMode());
 
+#ifdef __LIBRETRO__
+    return true;
+#else
     // Must happen on the proper thread for some video backends, e.g. OpenGL.
     return g_video_backend->Initialize(wsi);
+#endif
   };
 
   const auto deinit_video = [] {
     // Clear on screen messages that haven't expired
+#ifndef __LIBRETRO__
     OSD::ClearMessages();
 
     g_video_backend->Shutdown();
+#endif
   };
 
   if (system.IsDualCoreMode())
@@ -495,10 +519,12 @@ static void FifoPlayerThread(Core::System& system, const std::optional<std::stri
       if (!is_init)
         return;
 
+#ifndef __LIBRETRO__
       system.GetFifo().RunGpuLoop();
       INFO_LOG_FMT(CONSOLE, "{}", StopMessage(false, "Video Loop Ended"));
 
       deinit_video();
+#endif
     }};
 
     if (init_from_thread.get_future().get())
@@ -666,6 +692,8 @@ void EmuThread(Core::System& system, std::unique_ptr<BootParameters> boot,
   auto bsd_ptr = std::make_shared<BootSessionData>(std::move(boot_session_data));
   Common::ScopeGuard wiifs_guard {
     [bsd_ptr]() {
+      if (!bsd_ptr)
+        return;
       Core::CleanUpWiiFileSystemContents(*bsd_ptr);
       bsd_ptr->InvokeWiiSyncCleanup();
     }
@@ -692,6 +720,36 @@ void EmuThread(Core::System& system, std::unique_ptr<BootParameters> boot,
   }
 
   UpdateTitle(system);
+
+#ifdef __LIBRETRO__
+  // these are not needed if EmuThread is launched as a std::thread
+  if (!s_emu_thread.joinable())
+  {
+    s_emu_thread_scope_guards.emplace_back(Common::MoveOnlyFunction<void()>(
+      [g = std::move(flag_guard)]() mutable { g.Exit(); }));
+
+    s_emu_thread_scope_guards.emplace_back(Common::MoveOnlyFunction<void()>(
+      [g = std::move(movie_guard)]() mutable { g.Exit(); }));
+
+    s_emu_thread_scope_guards.emplace_back(Common::MoveOnlyFunction<void()>(
+      [g = std::move(hw_guard)]() mutable { g.Exit(); }));
+
+    if (system.IsDualCoreMode() && video_guard)
+    {
+      auto* vg_ptr = video_guard.get();
+      s_emu_thread_scope_guards.emplace_back(Common::MoveOnlyFunction<void()>(
+        [vg_ptr]() {
+          if (vg_ptr) vg_ptr->Exit();
+      }));
+    }
+
+    s_emu_thread_scope_guards.emplace_back(Common::MoveOnlyFunction<void()>(
+      [g = std::move(audio_guard)]() mutable { g.Exit(); }));
+
+    s_emu_thread_scope_guards.emplace_back(Common::MoveOnlyFunction<void()>(
+      [g = std::move(wiifs_guard)]() mutable { g.Exit(); }));
+  }
+#endif
 
   // Become the CPU thread.
   cpu_thread_func(system, savestate_path, delete_savestate);
@@ -918,7 +976,8 @@ void Callback_NewField(Core::System& system)
 
   AchievementManager::GetInstance().DoFrame();
 #ifdef __LIBRETRO__
-  system.GetFifo().StopGpuLoop();
+  if (system.IsDualCoreMode())
+    system.GetFifo().StopGpuLoop();
 #endif
 }
 
@@ -951,9 +1010,8 @@ void Shutdown(Core::System& system)
   if (s_emu_thread.joinable())
     s_emu_thread.join();
 #ifdef __LIBRETRO__
-  if (s_cpu_thread.joinable())
-    s_cpu_thread.join();
-
+  for (auto& g : s_emu_thread_scope_guards)
+    g.Exit();
   s_emu_thread_scope_guards.clear();
 #endif
 

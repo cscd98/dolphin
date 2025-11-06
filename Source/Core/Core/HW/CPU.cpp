@@ -22,6 +22,9 @@
 #include "Core/System.h"
 #include "Core/TimePlayed.h"
 #include "VideoCommon/Fifo.h"
+#ifdef __LIBRETRO__
+#include "VideoCommon/AsyncRequests.h"
+#endif
 
 namespace CPU
 {
@@ -39,6 +42,9 @@ void CPUManager::Init(PowerPC::CPUCore cpu_core)
 void CPUManager::Shutdown()
 {
   Stop();
+#ifdef __LIBRETRO__
+  cpu_run_state_reached.store(false, std::memory_order_release);
+#endif
   m_system.GetPowerPC().Shutdown();
 }
 
@@ -116,6 +122,9 @@ void CPUManager::Run()
     timing = std::thread(&CPUManager::StartTimePlayedTimer, this);
   }
 
+#ifdef __LIBRETRO__
+  cpu_run_state_reached.store(true, std::memory_order_release);
+#endif
   std::unique_lock state_lock(m_state_change_lock);
   while (m_state != State::PowerDown)
   {
@@ -220,6 +229,26 @@ void CPUManager::Run()
   state_lock.unlock();
   Host_UpdateDisasmDialog();
 }
+
+#ifdef __LIBRETRO__
+void CPUManager::RunSingleFrame()
+{
+  auto& system = Core::System::GetInstance();
+  auto& power_pc = system.GetPowerPC();
+
+  Core::HostDispatchJobs(system);
+
+  Core::s_stop_frame_step.store(false);
+
+  Core::s_frame_step = true;
+
+  SetState(system, Core::State::Running, false, true);
+
+  power_pc.RunLoop();
+
+  AsyncRequests::GetInstance()->PullEvents();
+}
+#endif
 
 // Requires holding m_state_change_lock
 void CPUManager::RunAdjacentSystems(bool running)

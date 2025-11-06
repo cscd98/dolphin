@@ -52,6 +52,10 @@ public:
   // To be called by the CPU Thread.
   void Run();
 
+#ifdef __LIBRETRO__
+  void RunSingleFrame();
+#endif
+
   // Causes shutdown
   // Once started, State::PowerDown cannot be stopped.
   // Synchronizes with the CPU Thread (waits for CPU::Run to exit).
@@ -103,6 +107,12 @@ public:
   // PauseAndLock(), as while the CPU is in the run loop, it won't execute the function.
   void AddCPUThreadJob(Common::MoveOnlyFunction<void()> function);
 
+#ifdef __LIBRETRO__
+  bool HasCPURunStateBeenReached() const
+  {
+    return cpu_run_state_reached.load(std::memory_order_acquire);
+  }
+#endif
 private:
   void FlushStepSyncEventLocked();
   void ExecutePendingJobs(std::unique_lock<std::mutex>& state_lock);
@@ -143,5 +153,8 @@ private:
   Common::Event m_time_played_finish_sync;
 
   Core::System& m_system;
+#ifdef __LIBRETRO__
+  std::atomic<bool> cpu_run_state_reached{false};
+#endif
 };
 }  // namespace CPU

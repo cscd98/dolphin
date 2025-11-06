@@ -42,19 +42,15 @@ if(NOT MSVC AND NOT CLANG)
    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 endif()
 
-if (MSVC)
-   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:OpenGL32.dll /DELAYLOAD:DInput8.dll")
-   target_link_libraries(dolphin_libretro PRIVATE
-     dxguid
-     windowsapp
-   )
-endif()
-
 if(MSVC)
+	set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /DELAYLOAD:OpenGL32.dll /DELAYLOAD:DInput8.dll")
 	target_link_libraries(dolphin_libretro PRIVATE
 		Delayimp.lib
 		core
+		dxguid
+		hid
 		uicommon
+		windowsapp
 		${LIBS}
 	)
 else()
@@ -79,6 +75,10 @@ if(MINGW)
   target_link_libraries(dolphin_libretro PRIVATE
     common
     setupapi
+    bthprops
+    bluetoothapis
+    hid
+    cfgmgr32
   )
 endif()
 

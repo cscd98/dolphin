@@ -207,6 +207,14 @@ void Presenter::ViSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
 
   video_events.before_present_event.Trigger(present_info);
 
+#ifdef __LIBRETRO__
+  g_is_duplicate_frame = is_duplicate;
+
+  // allow presentation logic to proceed to always generate a frame with OGL
+  if(is_duplicate && Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
+    is_duplicate = false;
+#endif
+
   if (!is_duplicate || !g_ActiveConfig.bSkipPresentingDuplicateXFBs)
   {
     Present(presentation_time);
@@ -945,7 +953,9 @@ void Presenter::DoState(PointerWrap& p)
   {
     // This technically counts as the end of the frame
     GetVideoEvents().after_frame_event.Trigger(Core::System::GetInstance());
-
+#ifdef __LIBRETRO__
+    if (g_video_backend && g_video_backend->GetConfigName() != "OGL")
+#endif
     ImmediateSwap(m_last_xfb_addr, m_last_xfb_width, m_last_xfb_stride, m_last_xfb_height,
                   m_last_xfb_ticks);
   }

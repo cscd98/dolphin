@@ -138,11 +138,11 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "0.0"
   },
-  /*{
+  {
     Libretro::Options::core::MAIN_CPU_THREAD,
     "Dual Core Mode",
     nullptr,
-    "Enable dual-core CPU emulation.",
+    "Enabled: retroarch is responsible for requesting GPU work. Disabled: the CPU thread is responsible instead. Requires RESTART.",
     nullptr,
     CATEGORY_CORE,
     {
@@ -151,7 +151,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "enabled"
-  },*/
+  },
   {
     Libretro::Options::core::MAIN_PRECISION_FRAME_TIMING,
     "Precision Frame Timing",
@@ -197,6 +197,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "enabled"
+  },
+  {
+    Libretro::Options::core::MAIN_ACCURATE_CPU_CACHE,
+    "Accurate CPU cache",
+    nullptr,
+    "Enabled - fast, Disabled - guarantees correctness involving cache behaviour.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
   },
   {
     Libretro::Options::audio::DSP_HLE,
@@ -341,6 +355,22 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "Enable the debugger.",
     nullptr,
     CATEGORY_INTERFACE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+
+  // Main.BluetoothPassthrough
+  {
+    Libretro::Options::main_bluetooth::BLUETOOTH_PASSTHROUGH,
+    "Bluetooth passthrough mode",
+    nullptr,
+    "Pass all traffic directly to the host’s Bluetooth adapter. This might CRASH if your adaptor is not compatible.",
+    nullptr,
+    CATEGORY_SYSCONF,
     {
       { "disabled", nullptr },
       { "enabled",  nullptr },

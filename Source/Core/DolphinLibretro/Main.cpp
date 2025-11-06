@@ -128,9 +128,9 @@ void retro_run(void)
   Libretro::Options::CheckForUpdatedVariables();
   Libretro::FrameTiming::CheckForFastForwarding();
 #if defined(_DEBUG)
-  Common::Log::LogManager::GetInstance()->SetLogLevel(Common::Log::LogLevel::LDEBUG);
+  Common::Log::LogManager::GetInstance()->SetConfigLogLevel(Common::Log::LogLevel::LDEBUG);
 #else
-  Common::Log::LogManager::GetInstance()->SetLogLevel(
+  Common::Log::LogManager::GetInstance()->SetConfigLogLevel(
     static_cast<Common::Log::LogLevel>(
         Libretro::Options::GetCached<int>(
             Libretro::Options::main_interface::LOG_LEVEL, static_cast<int>(Common::Log::LogLevel::LINFO))));
@@ -144,14 +144,26 @@ void retro_run(void)
 
   Libretro::Input::Update();
 
+  Core::System& system = Core::System::GetInstance();
+
   if (Core::GetState(Core::System::GetInstance()) == Core::State::Starting &&
       !Libretro::g_emuthread_launched)
   {
     WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
-    Libretro::g_emuthread_launched = true;
-    Core::EmuThread(Core::System::GetInstance(), std::move(Core::g_boot_params), wsi);
+    if (system.IsDualCoreMode())
+    {
+      Core::s_emu_thread = std::thread(Core::EmuThread,
+        std::ref(Core::System::GetInstance()), std::move(Core::g_boot_params), wsi);
 
-    Libretro::Audio::Start();
+      // Wait until CPU thread has reached Run()
+      auto& cpu_manager = Core::System::GetInstance().GetCPU();
+      while (!cpu_manager.HasCPURunStateBeenReached())
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    else
+      Core::EmuThread(Core::System::GetInstance(), std::move(Core::g_boot_params), wsi);
+
+    Libretro::g_emuthread_launched = true;
 
     if(Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
     {
@@ -220,9 +232,15 @@ void retro_run(void)
   RETRO_PERFORMANCE_INIT(dolphin_main_func);
   RETRO_PERFORMANCE_START(dolphin_main_func);
 
-  Core::System& system = Core::System::GetInstance();
-  Core::DoFrameStep(system);
-  system.GetFifo().RunGpuLoop();
+  if (system.IsDualCoreMode())
+  {
+    Core::DoFrameStep(system);
+    system.GetFifo().RunGpuLoop();
+  }
+  else
+  {
+    system.GetCPU().RunSingleFrame();
+  }
 
   RETRO_PERFORMANCE_STOP(dolphin_main_func);
 }

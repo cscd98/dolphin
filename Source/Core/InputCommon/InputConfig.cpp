@@ -140,6 +140,10 @@ void InputConfig::SaveConfig()
 
 ControllerEmu::EmulatedController* InputConfig::GetController(int index) const
 {
+#ifdef __LIBRETRO__
+  if (index < 0 || index >= static_cast<int>(m_controllers.size()))
+    return nullptr;
+#endif
   return m_controllers.at(index).get();
 }
 

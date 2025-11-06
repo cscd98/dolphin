@@ -83,17 +83,6 @@ void Init()
   }
 }
 
-void Start()
-{
-  auto& system = Core::System::GetInstance();
-  system.SetSoundStreamRunning(false);
-  std::unique_ptr<Libretro::Audio::Stream> audio_stream = std::make_unique<Libretro::Audio::Stream>();
-  AudioCommon::SetSoundStreamRunning(system, false);
-  audio_stream->Init();
-  system.SetSoundStream(std::move(audio_stream));
-  AudioCommon::SetSoundStreamRunning(system, true);
-}
-
 inline unsigned GetSamplesForFrame(unsigned sample_rate)
 {
   double frame_time_sec = FrameTiming::target_frame_duration_usec.load(std::memory_order_relaxed) * 1e-6;

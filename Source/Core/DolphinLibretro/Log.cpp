@@ -49,7 +49,7 @@ void Shutdown()
 
 LogListener::LogListener(retro_log_printf_t log) : m_log(log)
 {
-  Common::Log::LogManager::GetInstance()->SetLogLevel(
+  Common::Log::LogManager::GetInstance()->SetConfigLogLevel(
     static_cast<Common::Log::LogLevel>(
         Libretro::Options::GetCached<int>(
             Libretro::Options::main_interface::LOG_LEVEL, static_cast<int>(Common::Log::LogLevel::LINFO))));

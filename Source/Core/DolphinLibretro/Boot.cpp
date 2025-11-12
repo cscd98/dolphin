@@ -2,6 +2,7 @@
 #include <libretro.h>
 #include <string>
 #include <functional>
+#include <filesystem>
 
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
@@ -33,10 +34,7 @@
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/OnScreenDisplay.h"
 
-#ifdef _MSC_VER
-#include <filesystem>
 namespace fs = std::filesystem;
-#endif
 
 namespace Libretro
 {
@@ -375,26 +373,30 @@ bool retro_load_game(const struct retro_game_info* game)
 
   std::vector<std::string> normalized_game_paths;
   normalized_game_paths.push_back(Libretro::NormalizePath(game->path));
-  std::string folder_path;
-  std::string filename;
+  std::string folder_path_str;
+  std::string filename_str;
   std::string extension;
-  SplitPath(normalized_game_paths.front(), &folder_path, &filename, &extension);
-  std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+  SplitPath(normalized_game_paths.front(), &folder_path_str, &filename_str, &extension);
+  fs::path folder_path(folder_path_str);
+  fs::path filename(filename_str);
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                [](unsigned char c){ return std::tolower(c); });
 
 #ifdef _WIN32
   // If SplitPath only gave us "D:", rebuild the real directory from the full path
-  if (folder_path.size() == 2 && folder_path[1] == ':')
+  if (folder_path_str.size() == 2 && folder_path_str[1] == ':')
   {
     // take everything up to the last backslash
     size_t last_slash = normalized_game_paths.front().find_last_of("\\/");
     if (last_slash != std::string::npos)
-      folder_path = normalized_game_paths.front().substr(0, last_slash + 1);
+      folder_path_str = normalized_game_paths.front().substr(0, last_slash + 1);
+    folder_path = fs::path(folder_path_str);
   }
 #endif
 
   if (extension == ".m3u" || extension == ".m3u8")
   {
-    normalized_game_paths = ReadM3UFile(normalized_game_paths.front(), folder_path);
+    normalized_game_paths = ReadM3UFile(normalized_game_paths.front(), folder_path_str);
     if (normalized_game_paths.empty())
     {
       ERROR_LOG_FMT(BOOT, "Could not boot {}. M3U contains no paths", game->path);

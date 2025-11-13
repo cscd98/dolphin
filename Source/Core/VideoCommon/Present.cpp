@@ -103,7 +103,7 @@ static void TryToSnapToXFBSize(int& width, int& height, int xfb_width, int xfb_h
 Presenter::Presenter()
 {
   m_config_changed =
-      ConfigChangedEvent::Register([this](u32 bits) { ConfigChanged(bits); }, "Presenter");
+      GetVideoEvents().config_changed_event.Register([this](u32 bits) { ConfigChanged(bits); });
 }
 
 Presenter::~Presenter()
@@ -203,22 +203,16 @@ void Presenter::ViSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
     }
   }
 
-#ifdef __LIBRETRO__
-  g_is_duplicate_frame = is_duplicate;
+  auto& video_events = GetVideoEvents();
 
-  // allow presentation logic to proceed to always generate a frame with OGL
-  if(Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
-    is_duplicate = false;
-#endif
-
-  BeforePresentEvent::Trigger(present_info);
+  video_events.before_present_event.Trigger(present_info);
 
   if (!is_duplicate || !g_ActiveConfig.bSkipPresentingDuplicateXFBs)
   {
     Present(presentation_time);
     ProcessFrameDumping(ticks);
 
-    AfterPresentEvent::Trigger(present_info);
+    video_events.after_present_event.Trigger(present_info);
   }
 }
 
@@ -232,12 +226,14 @@ void Presenter::ImmediateSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_
   present_info.reason = PresentInfo::PresentReason::Immediate;
   present_info.present_count = m_present_count++;
 
-  BeforePresentEvent::Trigger(present_info);
+  auto& video_events = GetVideoEvents();
+
+  video_events.before_present_event.Trigger(present_info);
 
   Present();
   ProcessFrameDumping(ticks);
 
-  AfterPresentEvent::Trigger(present_info);
+  video_events.after_present_event.Trigger(present_info);
 }
 
 void Presenter::ProcessFrameDumping(u64 ticks) const
@@ -341,7 +337,7 @@ void Presenter::OnBackbufferSet(bool size_changed, bool is_first_set)
   if (size_changed && !is_first_set && g_ActiveConfig.iEFBScale == EFB_SCALE_AUTO_INTEGRAL &&
       m_auto_resolution_scale != AutoIntegralScale())
   {
-    g_framebuffer_manager->RecreateEFBFramebuffer();
+    g_framebuffer_manager->RecreateEFBFramebuffer(g_ActiveConfig.iEFBScale);
   }
   if (size_changed || is_first_set)
   {
@@ -948,10 +944,8 @@ void Presenter::DoState(PointerWrap& p)
   if (p.IsReadMode() && m_last_xfb_stride != 0)
   {
     // This technically counts as the end of the frame
-    AfterFrameEvent::Trigger(Core::System::GetInstance());
-#ifdef __LIBRETRO__
-    if (g_video_backend && g_video_backend->GetName() != "OGL")
-#endif
+    GetVideoEvents().after_frame_event.Trigger(Core::System::GetInstance());
+
     ImmediateSwap(m_last_xfb_addr, m_last_xfb_width, m_last_xfb_stride, m_last_xfb_height,
                   m_last_xfb_ticks);
   }

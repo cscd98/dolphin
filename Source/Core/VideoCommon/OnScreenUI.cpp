@@ -113,11 +113,11 @@ bool OnScreenUI::RecompileImGuiPipeline()
       g_presenter->GetBackbufferFormat() == AbstractTextureFormat::RGBA16F;
 
   std::unique_ptr<AbstractShader> vertex_shader = g_gfx->CreateShaderFromSource(
-      ShaderStage::Vertex, FramebufferShaderGen::GenerateImGuiVertexShader(),
+      ShaderStage::Vertex, FramebufferShaderGen::GenerateImGuiVertexShader(), nullptr,
       "ImGui vertex shader");
   std::unique_ptr<AbstractShader> pixel_shader = g_gfx->CreateShaderFromSource(
       ShaderStage::Pixel, FramebufferShaderGen::GenerateImGuiPixelShader(linear_space_output),
-      "ImGui pixel shader");
+      nullptr, "ImGui pixel shader");
   if (!vertex_shader || !pixel_shader)
   {
     PanicAlertFmt("Failed to compile ImGui shaders");
@@ -130,7 +130,7 @@ bool OnScreenUI::RecompileImGuiPipeline()
   {
     geometry_shader = g_gfx->CreateShaderFromSource(
         ShaderStage::Geometry, FramebufferShaderGen::GeneratePassthroughGeometryShader(1, 1),
-        "ImGui passthrough geometry shader");
+        nullptr, "ImGui passthrough geometry shader");
     if (!geometry_shader)
     {
       PanicAlertFmt("Failed to compile ImGui geometry shader");
@@ -256,11 +256,7 @@ void OnScreenUI::DrawImGui()
 // Create On-Screen-Messages
 void OnScreenUI::DrawDebugText()
 {
-  const bool show_movie_window =
-      Config::Get(Config::MAIN_SHOW_FRAME_COUNT) || Config::Get(Config::MAIN_SHOW_LAG) ||
-      Config::Get(Config::MAIN_MOVIE_SHOW_INPUT_DISPLAY) ||
-      Config::Get(Config::MAIN_MOVIE_SHOW_RTC) || Config::Get(Config::MAIN_MOVIE_SHOW_RERECORD);
-  if (show_movie_window)
+  if (Config::Get(Config::MAIN_MOVIE_SHOW_OSD))
   {
     // Position under the FPS display.
     ImGui::SetNextWindowPos(

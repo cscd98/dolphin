@@ -2847,8 +2847,8 @@ void TextureCacheBase::CopyEFBToCacheEntry(RcTcacheEntry& entry, bool is_depth_c
       is_depth_copy ? g_framebuffer_manager->ResolveEFBDepthTexture(framebuffer_rect) :
                       g_framebuffer_manager->ResolveEFBColorTexture(framebuffer_rect);
 
-  src_texture->FinishedRendering();
   g_gfx->BeginUtilityDrawing();
+  src_texture->FinishedRendering();
 
   // Fill uniform buffer.
   struct Uniforms
@@ -2921,8 +2921,8 @@ void TextureCacheBase::CopyEFB(AbstractStagingTexture* dst, const EFBCopyParams&
       params.depth ? g_framebuffer_manager->ResolveEFBDepthTexture(framebuffer_rect) :
                      g_framebuffer_manager->ResolveEFBColorTexture(framebuffer_rect);
 
-  src_texture->FinishedRendering();
   g_gfx->BeginUtilityDrawing();
+  src_texture->FinishedRendering();
 
   // Fill uniform buffer.
   struct Uniforms

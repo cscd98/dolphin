@@ -429,17 +429,22 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info* i
 
 void retro_unload_game(void)
 {
-  if (Core::IsRunning(Core::System::GetInstance()))
+  auto& system = Core::System::GetInstance();
+
+  if (Core::IsRunning(system))
   {
-    Core::Stop(Core::System::GetInstance());
-    Core::Shutdown(Core::System::GetInstance());
+    Core::Stop(system);
+#if defined(__LIBUSB__)
+    system.ShutdownUSBScanner();
+#endif
+
+    Core::Shutdown(system);
   }
 
   if (!g_context_status.IsDestroyed() && g_video_backend)
     g_video_backend->Shutdown();
 
   // these are disabled in Shutdown on fullscreen/window toggle
-  auto& system = Core::System::GetInstance();
   system.GetCustomResourceManager().Shutdown();
   system.GetFifo().Shutdown();
 

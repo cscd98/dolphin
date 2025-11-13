@@ -33,6 +33,9 @@ public:
 
   operator libusb_context*() const;
   bool IsValid() const;
+#ifdef __LIBRETRO__
+  void Shutdown();
+#endif
 
   // Only valid if the context is valid.
   int GetDeviceList(GetDeviceListCallback callback) const;

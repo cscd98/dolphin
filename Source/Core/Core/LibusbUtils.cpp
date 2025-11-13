@@ -50,6 +50,20 @@ public:
     libusb_exit(m_context);
   }
 
+#ifdef __LIBRETRO__
+  void Shutdown()
+  {
+    if (!m_context || !m_event_thread_running.TestAndClear())
+      return;
+#if defined(LIBUSB_API_VERSION) && LIBUSB_API_VERSION >= 0x01000105
+    libusb_interrupt_event_handler(m_context);
+#endif
+    m_event_thread.join();
+    libusb_exit(m_context);
+    m_context = nullptr; // clear this so it no longer fires in deconstructor again
+  }
+#endif
+
   libusb_context* GetContext() const { return m_context; }
 
   int GetDeviceList(GetDeviceListCallback callback) const
@@ -102,6 +116,14 @@ Context::Context() : m_impl{std::make_unique<Impl>()}
 }
 
 Context::~Context() = default;
+
+#if defined(__LIBUSB__) && defined(__LIBRETRO__)
+void Context::Shutdown()
+{
+  if(m_impl)
+    m_impl->Shutdown();
+}
+#endif
 
 Context::operator libusb_context*() const
 {

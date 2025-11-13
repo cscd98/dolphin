@@ -323,6 +323,13 @@ IOS::HLE::USBScanner& System::GetUSBScanner() const
   return m_impl->m_usb_scanner;
 }
 
+#ifdef __LIBRETRO__
+void System::ShutdownUSBScanner()
+{
+  m_impl->m_usb_scanner.Shutdown();
+}
+#endif
+
 VertexShaderManager& System::GetVertexShaderManager() const
 {
   return m_impl->m_vertex_shader_manager;

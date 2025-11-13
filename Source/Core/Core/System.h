@@ -196,6 +196,9 @@ public:
   Sram& GetSRAM() const;
   SystemTimers::SystemTimersManager& GetSystemTimers() const;
   IOS::HLE::USBScanner& GetUSBScanner() const;
+#ifdef __LIBRETRO__
+  void ShutdownUSBScanner();
+#endif
   VertexShaderManager& GetVertexShaderManager() const;
   XFStateManager& GetXFStateManager() const;
   VideoInterface::VideoInterfaceManager& GetVideoInterface() const;

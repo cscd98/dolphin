@@ -251,6 +251,7 @@ namespace wiimote {
   constexpr const char IR_OFFSET[] = "dolphin_ir_offset";
   constexpr const char IR_YAW[] = "dolphin_ir_yaw";
   constexpr const char IR_PITCH[] = "dolphin_ir_pitch";
+  constexpr const char* DEFAULT_DEVICE = "dolphin_wiimote_default_device";
 }  // namespace wiimote
 }  // namespace Options
 }  // namespace Libretro

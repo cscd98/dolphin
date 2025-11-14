@@ -157,6 +157,7 @@ void retro_reset(void)
 
 void retro_run(void)
 {
+  Libretro::Input::InitSensors();
   Libretro::Options::CheckForUpdatedVariables();
   Libretro::FrameTiming::CheckForFastForwarding();
 #if defined(_DEBUG)

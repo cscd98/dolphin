@@ -57,9 +57,10 @@ namespace Input
 static retro_input_poll_t poll_cb = nullptr;
 static retro_input_state_t input_cb = nullptr;
 static struct retro_rumble_interface rumble{};
-static const std::string source = "Libretro";
 static unsigned input_types[8];
 static bool g_init_wiimotes = false;
+static bool gyro_enabled = false;
+static bool accelerometer_enabled = false;
 
 static struct retro_input_descriptor descGC[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Left"},
@@ -416,6 +417,13 @@ static void AddDevicesForPort(unsigned port)
   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_ANALOG, port));
   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_MOUSE, port));
   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_POINTER, port));
+
+  if(gyro_enabled)
+  {
+    auto sensor = std::make_shared<SensorDevice>(port);
+    sensor->RegisterAll();
+    g_controller_interface.AddDevice(sensor);
+  }
 }
 
 #if 0
@@ -439,6 +447,33 @@ void Init(const WindowSystemInfo& wsi)
   if (!environ_cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble))
   {
     WARN_LOG_FMT(COMMON, "RetroArch does not support RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE.");
+  }
+
+  if (environ_cb(RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE, &sensor_interface))
+  {
+    printf("sensor interface\n");
+    if (sensor_interface.set_sensor_state)
+    {
+      printf("sensor interface - state\n");
+
+      gyro_enabled = sensor_interface.set_sensor_state(0, RETRO_SENSOR_GYROSCOPE_ENABLE, 60);
+      accelerometer_enabled = sensor_interface.set_sensor_state(0, RETRO_SENSOR_ACCELEROMETER_ENABLE, 120);
+
+      gyro_enabled = true;
+      accelerometer_enabled = true;
+
+      if (gyro_enabled)
+      {
+        printf("sensor interface - gyro enabled\n");
+        INFO_LOG_FMT(COMMON, "Gyroscope sensor enabled");
+      }
+
+      if (accelerometer_enabled)
+      {
+        printf("sensor interface - accelerometer_enabled enabled\n");
+        INFO_LOG_FMT(COMMON, "Accelerometer sensor enabled");
+      }
+    }
   }
 
   g_controller_interface.Initialize(wsi);
@@ -554,6 +589,18 @@ void Shutdown()
   for (int i = 0; i < 4; ++i)
     Pad::ResetRumble(i);
 
+  if (sensor_interface.set_sensor_state)
+  {
+    if(Libretro::Input::gyro_enabled)
+      sensor_interface.set_sensor_state(0, RETRO_SENSOR_GYROSCOPE_DISABLE, 0);
+
+    if(Libretro::Input::accelerometer_enabled)
+      sensor_interface.set_sensor_state(0, RETRO_SENSOR_ACCELEROMETER_DISABLE, 0);
+
+    gyro_enabled = false;
+    accelerometer_enabled = false;
+  }
+
   Keyboard::Shutdown();
   Pad::Shutdown();
   g_controller_interface.Shutdown();
@@ -572,12 +619,49 @@ void Update()
   if (input_cb)
     input_cb(0, 0, 0, 0);
 #endif
+
+  UpdateGyro(0);
+}
+
+void UpdateGyro(unsigned port)
+{
+  if (!gyro_enabled || !sensor_interface.get_sensor_input)
+    return;
+
+  float gyro_x = sensor_interface.get_sensor_input(port, RETRO_SENSOR_GYROSCOPE_X);
+  float gyro_y = sensor_interface.get_sensor_input(port, RETRO_SENSOR_GYROSCOPE_Y);
+  float gyro_z = sensor_interface.get_sensor_input(port, RETRO_SENSOR_GYROSCOPE_Z);
+
+  float accel_x = sensor_interface.get_sensor_input(port, RETRO_SENSOR_ACCELEROMETER_X);
+  float accel_y = sensor_interface.get_sensor_input(port, RETRO_SENSOR_ACCELEROMETER_Y);
+  float accel_z = sensor_interface.get_sensor_input(port, RETRO_SENSOR_ACCELEROMETER_Z);
+
+  g_gyro[port][0] = gyro_x;
+  g_gyro[port][1] = gyro_y;
+  g_gyro[port][2] = gyro_z;
+
+  g_accel[port][0] = accel_x;
+  g_accel[port][1] = accel_y;
+  g_accel[port][2] = accel_z;
+
+  printf("gyro_x %f\n", gyro_x);
+  printf("gyro_y %f\n", gyro_y);
+  printf("gyro_z %f\n", gyro_z);
+
+  printf("accel_x %f\n", accel_x);
+  printf("accel_y %f\n", accel_y);
+  printf("accel_z %f\n", accel_z);
 }
 
 void ResetControllers()
 {
   for (int port = 0; port < 4; port++)
     retro_set_controller_port_device(port, input_types[port]);
+}
+
+static std::string GetQualifiedNameSensor(unsigned port)
+{
+  return ciface::Core::DeviceQualifier(Libretro::Input::source, port, "Sensor").ToString();
 }
 
 }  // namespace Input
@@ -911,10 +995,52 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
         wmButtons->SetControlExpression(2, "B");  // 1
         wmButtons->SetControlExpression(3, "A");  // 2
       }
-      wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
-      wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
-      wmTilt->SetControlExpression(2, "`" + devAnalog + ":X0-`");  // Left
-      wmTilt->SetControlExpression(3, "`" + devAnalog + ":X0+`");  // Right
+
+      // Map gyro data to tilt expressions
+      if (Libretro::Input::gyro_enabled)
+      {
+        /*wmTilt->SetControlExpression(0, "Gyro:Pitch-");  // Forward
+        wmTilt->SetControlExpression(1, "Gyro:Pitch+");  // Backward
+        wmTilt->SetControlExpression(2, "Gyro:Roll-");   // Left
+        wmTilt->SetControlExpression(3, "Gyro:Roll+");   // Right*/
+        std::string devSensor = Libretro::Input::GetQualifiedNameSensor(port);
+
+        // Accelerometer (6 inputs: Up, Down, Left, Right, Forward, Backward)
+        // Indices must match WiimoteEmu::LoadDefaults ordering (0..5)
+        auto* wmAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
+          wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
+        if (wmAccel)
+        {
+          wmAccel->SetControlExpression(0, "`" + devSensor + ":AccelY`");      // Up
+          wmAccel->SetControlExpression(1, "`" + devSensor + ":AccelY`*-1");   // Down
+          wmAccel->SetControlExpression(2, "`" + devSensor + ":AccelX`*-1");   // Left
+          wmAccel->SetControlExpression(3, "`" + devSensor + ":AccelX`");      // Right
+          wmAccel->SetControlExpression(4, "`" + devSensor + ":AccelZ`");      // Forward
+          wmAccel->SetControlExpression(5, "`" + devSensor + ":AccelZ`*-1");   // Backward
+        }
+
+        // Gyroscope (6 inputs: PitchUp/Down, RollLeft/Right, YawLeft/Right)
+        auto* wmGyro = static_cast<ControllerEmu::IMUGyroscope*>(
+          wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
+        if (wmGyro)
+        {
+          // Map libretro axes to Wiimote angular axes:
+          // Pitch ~ rotation around X, Roll ~ rotation around Y, Yaw ~ rotation around Z
+          wmGyro->SetControlExpression(0, "`" + devSensor + ":GyroX`");       // Pitch Up
+          wmGyro->SetControlExpression(1, "`" + devSensor + ":GyroX`*-1");    // Pitch Down
+          wmGyro->SetControlExpression(2, "`" + devSensor + ":GyroY`*-1");    // Roll Left
+          wmGyro->SetControlExpression(3, "`" + devSensor + ":GyroY`");       // Roll Right
+          wmGyro->SetControlExpression(4, "`" + devSensor + ":GyroZ`*-1");    // Yaw Left
+          wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ`");       // Yaw Right
+        }
+      }
+      else
+      {
+        wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
+        wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
+        wmTilt->SetControlExpression(2, "`" + devAnalog + ":X0-`");  // Left
+        wmTilt->SetControlExpression(3, "`" + devAnalog + ":X0+`");  // Right
+      }
       wmButtons->SetControlExpression(4, "Select");                // -
       wmButtons->SetControlExpression(5, "Start");                 // +
     }

@@ -39,7 +39,9 @@ protected:
   bool CreateSwapChainBuffers() override;
   void DestroySwapChainBuffers() override;
 
+#ifndef __LIBRETRO__
 private:
+#endif
   struct BufferResources
   {
     std::unique_ptr<DXTexture> texture;

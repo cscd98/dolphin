@@ -585,4 +585,60 @@ void DXContext::WaitForFence(u64 fence)
     index = (index + 1) % NUM_COMMAND_LISTS;
   }
 }
+
+#ifdef __LIBRETRO__
+// a seperate function is needed to bind externally managed device to dolphin
+bool DXContext::CreateWithExternalDevice(ID3D12Device* device, ID3D12CommandQueue* queue)
+{
+  ASSERT(!g_dx_context);
+
+  if (!s_d3d12_library.Open("d3d12.dll") ||
+      !s_d3d12_library.GetSymbol("D3D12CreateDevice", &s_d3d12_create_device) ||
+      !s_d3d12_library.GetSymbol("D3D12GetDebugInterface", &s_d3d12_get_debug_interface) ||
+      !s_d3d12_library.GetSymbol("D3D12SerializeRootSignature", &s_d3d12_serialize_root_signature))
+  {
+    ERROR_LOG_FMT(VIDEO, "d3d12.dll could not be loaded.");
+    s_d3d12_library.Close();
+    return false;
+  }
+
+  if (!D3DCommon::LoadLibraries())
+  {
+    s_d3d12_library.Close();
+    return false;
+  }
+
+  g_dx_context.reset(new DXContext());
+
+  device->AddRef();
+  g_dx_context->m_device.Attach(device);
+
+  queue->AddRef();
+  g_dx_context->m_command_queue.Attach(queue);
+
+  g_dx_context->m_dxgi_factory = D3DCommon::CreateDXGIFactory(false);
+  if (!g_dx_context->m_dxgi_factory)
+  {
+    ERROR_LOG_FMT(VIDEO, "Failed to create DXGI factory");
+    Destroy();
+    return false;
+  }
+
+  if (!g_dx_context->CreateFence())
+  {
+    ERROR_LOG_FMT(VIDEO, "Failed to create fence");
+    Destroy();
+    return false;
+  }
+
+  if (!g_dx_context->CreateCommandLists())
+  {
+    ERROR_LOG_FMT(VIDEO, "Failed to create command lists");
+    Destroy();
+    return false;
+  }
+
+  return true;
+}
+#endif
 }  // namespace DX12

@@ -5,22 +5,23 @@
 #include "DolphinLibretro/Video.h"
 
 #include <cassert>
-#include <libretro.h>
 #include <memory>
 #include <sstream>
 #include <vector>
 
 #ifdef _WIN32
-#define HAVE_D3D11
-#include <libretro_d3d.h>
 #include "Common/DynamicLibrary.h"
-#include "VideoBackends/D3D/D3DBase.h"
-#include "VideoBackends/D3D/D3DState.h"
 #include "VideoBackends/D3D/VideoBackend.h"
 #include "VideoBackends/D3D/D3DGfx.h"
 #include "VideoBackends/D3D/D3DVertexManager.h"
 #include "VideoBackends/D3D/D3DPerfQuery.h"
 #include "VideoBackends/D3D/D3DBoundingBox.h"
+#include "VideoBackends/D3D12/Common.h"
+#include "VideoBackends/D3D12/VideoBackend.h"
+#include "VideoBackends/D3D12/D3D12Gfx.h"
+#include "VideoBackends/D3D12/D3D12VertexManager.h"
+#include "VideoBackends/D3D12/D3D12PerfQuery.h"
+#include "VideoBackends/D3D12/D3D12BoundingBox.h"
 #endif
 
 #include "Common/GL/GLContext.h"
@@ -61,6 +62,7 @@ namespace Video
 {
 #ifdef _WIN32
 static Common::DynamicLibrary d3d11_library;
+static Common::DynamicLibrary d3d12_library;
 #endif
 
 void Init()
@@ -86,6 +88,8 @@ void Init()
     if (SetHWRender(RETRO_HW_CONTEXT_OPENGLES3))
       return;
 #ifdef _WIN32
+    if (SetHWRender(RETRO_HW_CONTEXT_D3D12))
+      return;
     if (SetHWRender(RETRO_HW_CONTEXT_D3D11))
       return;
 #endif
@@ -164,6 +168,15 @@ bool SetHWRender(retro_hw_context_type type, const int version_major, const int 
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {
       Config::SetBase(Config::MAIN_GFX_BACKEND, "D3D");
+      success = true;
+    }
+    break;
+  case RETRO_HW_CONTEXT_D3D12:
+    hw_render.version_major = 12;
+    hw_render.version_minor = 0;
+    if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
+    {
+      Config::SetBase(Config::MAIN_GFX_BACKEND, "D3D12");
       success = true;
     }
     break;
@@ -297,6 +310,95 @@ void ContextReset(void)
 
     return;
   }
+
+  if (hw_render.context_type == RETRO_HW_CONTEXT_D3D12)
+  {
+    WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+    int efbScale = Libretro::Options::GetCached<int>(
+      Libretro::Options::gfx_settings::EFB_SCALE, 1);
+    wsi.render_surface_scale = efbScale;
+
+    retro_hw_render_interface_d3d12* d3d12;
+    if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE, (void**)&d3d12) || !d3d12)
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to get HW rendering interface!");
+      return;
+    }
+
+    if (d3d12->interface_version != RETRO_HW_RENDER_INTERFACE_D3D12_VERSION)
+    {
+      ERROR_LOG_FMT(VIDEO, "HW render interface mismatch, expected {}, got {}!",
+                RETRO_HW_RENDER_INTERFACE_D3D12_VERSION, d3d12->interface_version);
+      return;
+    }
+
+    if (!d3d12_library.IsOpen() && !d3d12_library.Open("d3d12.dll"))
+    {
+      d3d12_library.Close();
+      ERROR_LOG_FMT(VIDEO, "Failed to load D3D12 Libraries");
+      return;
+    }
+
+    if (!D3DCommon::LoadLibraries())
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to load dxgi or d3dcompiler Libraries");
+      return;
+    }
+
+    // Create D3D12 context with RetroArch's device and queue
+    ID3D12Device* ra_device = static_cast<ID3D12Device*>(d3d12->device);
+    ID3D12CommandQueue* ra_queue = static_cast<ID3D12CommandQueue*>(d3d12->queue);
+
+    if (!DX12::DXContext::CreateWithExternalDevice(ra_device, ra_queue))
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to create D3D12 context with external device");
+      return;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D12Device1> device1;
+    if (FAILED(DX12::g_dx_context->GetDevice()->QueryInterface(IID_PPV_ARGS(&device1))))
+    {
+      WARN_LOG_FMT(VIDEO,
+        "Missing Direct3D 12.1+ support. Logical operations will not be supported.");
+      g_backend_info.bSupportsLogicOp = false;
+    }
+
+    if (!DX12::g_dx_context->CreateGlobalResources())
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to create D3D12 global resources");
+      DX12::DXContext::Destroy();
+      return;
+    }
+
+    UpdateActiveConfig();
+
+    auto swap_chain = std::make_unique<DX12SwapChain>(
+        wsi, EFB_WIDTH * efbScale, EFB_HEIGHT * efbScale, d3d12);
+
+    if (!swap_chain->Initialize())
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to initialize swap chain buffers");
+      DX12::DXContext::Destroy();
+      return;
+    }
+
+    auto gfx = std::make_unique<DX12::Gfx>(std::move(swap_chain), wsi.render_surface_scale);
+    auto vertex_manager = std::make_unique<DX12::VertexManager>();
+    auto perf_query = std::make_unique<DX12::PerfQuery>();
+    auto bounding_box = std::make_unique<DX12::D3D12BoundingBox>();
+
+    if(!g_video_backend->InitializeShared(std::move(gfx), std::move(vertex_manager), 
+                                         std::move(perf_query), std::move(bounding_box)))
+    {
+      ERROR_LOG_FMT(VIDEO, "Failed to initialize shared components");
+      DX12::DXContext::Destroy();
+      return;
+    }
+
+    g_context_status.MarkInitialized();
+
+    return;
+  }
 #endif
   if(Video_InitializeBackend())
     g_context_status.MarkInitialized();
@@ -401,6 +503,13 @@ void ContextDestroy(void)
 
   switch (hw_render.context_type)
   {
+  case RETRO_HW_CONTEXT_D3D12:
+#ifdef _WIN32
+    DX12::DXContext::Destroy();
+    D3DCommon::UnloadLibraries();
+    d3d12_library.Close();
+#endif
+    break;
   case RETRO_HW_CONTEXT_D3D11:
 #ifdef _WIN32
     if (DX11::D3D::context)

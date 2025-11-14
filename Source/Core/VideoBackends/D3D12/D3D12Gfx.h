@@ -7,6 +7,7 @@
 
 #include "VideoBackends/D3D12/DescriptorAllocator.h"
 #include "VideoBackends/D3D12/DescriptorHeapManager.h"
+#include "VideoBackends/D3D12/D3D12SwapChain.h"
 #include "VideoCommon/AbstractGfx.h"
 #include "VideoCommon/Constants.h"
 

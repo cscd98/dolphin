@@ -11,11 +11,17 @@
 #include "VideoCommon/VideoConfig.h"
 #include "Common/Logging/Log.h"
 #ifdef _WIN32
+#define HAVE_D3D11
+#define HAVE_D3D12
+#include <libretro_d3d.h>
 #include "VideoBackends/D3D/D3DBase.h"
 #include "VideoBackends/D3D/D3DState.h"
 #include "VideoBackends/D3D/DXShader.h"
 #include "VideoBackends/D3D/DXTexture.h"
 #include "VideoBackends/D3D/D3DSwapChain.h"
+#include "VideoBackends/D3D12/DX12Context.h"
+#include "VideoBackends/D3D12/DX12Texture.h"
+#include "VideoBackends/D3D12/D3D12SwapChain.h"
 #endif
 #ifdef HAS_VULKAN
 #ifndef __APPLE__
@@ -137,6 +143,88 @@ protected:
 
     return true;
   }
+};
+
+class DX12SwapChain : public DX12::SwapChain
+{
+public:
+  DX12SwapChain(const WindowSystemInfo& wsi, int width, int height,
+                retro_hw_render_interface_d3d12* d3d12_interface)
+      : DX12::SwapChain(wsi, nullptr, nullptr),
+        m_d3d12_interface(d3d12_interface)
+  {
+    m_width = width;
+    m_height = height;
+ }
+
+  bool Initialize()
+  {
+    return CreateSwapChainBuffers();
+  }
+
+  bool Present() override
+  {
+    if (m_buffers.empty() || !m_buffers[m_current_buffer].texture)
+    {
+      ERROR_LOG_FMT(VIDEO, "Present aborted: no swap chain texture");
+      return false;
+    }
+
+    auto* texture = m_buffers[m_current_buffer].texture.get();
+
+    texture->TransitionToState(m_d3d12_interface->required_state);
+
+    m_d3d12_interface->set_texture(
+      m_d3d12_interface->handle,
+      texture->GetResource(),
+      DXGI_FORMAT_R8G8B8A8_UNORM
+    );
+
+    Libretro::Video::video_cb(RETRO_HW_FRAME_BUFFER_VALID,
+                              m_width, m_height,
+                              m_width);
+
+    return true;
+  }
+
+protected:
+  bool CreateSwapChainBuffers() override
+  {
+    m_buffers.clear();
+    m_buffers.resize(1);
+
+    TextureConfig config(m_width, m_height, 1, 1, 1,
+                         AbstractTextureFormat::RGBA8,
+                         AbstractTextureFlag_RenderTarget,
+                         AbstractTextureType::Texture_2D);
+
+    m_buffers[0].texture = DX12::DXTexture::Create(config, "LibretroSwapChainTexture");
+    if (!m_buffers[0].texture)
+    {
+      ERROR_LOG_FMT(VIDEO, "Backbuffer texture creation failed");
+      return false;
+    }
+
+    m_buffers[0].framebuffer = DX12::DXFramebuffer::Create(
+        m_buffers[0].texture.get(), nullptr, {});
+    if (!m_buffers[0].framebuffer)
+    {
+      ERROR_LOG_FMT(VIDEO, "Backbuffer framebuffer creation failed");
+      return false;
+    }
+
+    m_current_buffer = 0;
+
+    return true;
+  }
+
+  void DestroySwapChainBuffers() override
+  {
+    m_buffers.clear();
+  }
+
+private:
+  retro_hw_render_interface_d3d12* m_d3d12_interface;
 };
 
 #endif

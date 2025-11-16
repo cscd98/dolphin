@@ -37,6 +37,14 @@ USBScanner::~USBScanner()
   StopScanning();
 }
 
+#if defined(__LIBRETRO__) && defined(__LIBUSB__)
+void USBScanner::Shutdown()
+{
+  if(m_context)
+    m_context.Shutdown();
+}
+#endif
+
 void USBScanner::WaitForFirstScan()
 {
   if (m_thread_running.IsSet())

@@ -159,9 +159,9 @@ void ResetDeviceType(int chan)
 
 namespace WiimoteReal
 {
-void WiimoteScannerAndroid::FindWiimotes(std::vector<Wiimote*>& found_wiimotes,
-                                         Wiimote*& found_board)
+WiimoteScannerBackend::FindResults WiimoteScannerAndroid::FindAttachedWiimotes()
 {
+  return {};
 }
 
 WiimoteAndroid::WiimoteAndroid(int index) : Wiimote(), m_mayflash_index(index)

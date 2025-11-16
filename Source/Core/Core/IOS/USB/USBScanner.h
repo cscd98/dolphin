@@ -35,12 +35,8 @@ public:
 
   DeviceMap GetDevices() const;
 
-#ifdef __LIBRETRO__
-  void Shutdown()
-  {
-    if(m_context)
-      m_context.Shutdown();
-  }
+#if defined(__LIBRETRO__) && defined(__LIBUSB__)
+  void Shutdown();
 #endif
 
 private:

@@ -746,7 +746,7 @@ elseif(UNIX)
   target_sources(core PRIVATE
     HW/EXI/BBA/TAP_Unix.cpp
   )
-  if(ANDROID)
+  if(ANDROID AND NOT LIBRETRO)
     target_sources(core PRIVATE
       HW/WiimoteReal/IOAndroid.cpp
       HW/WiimoteReal/IOAndroid.h

@@ -250,29 +250,57 @@ size_t retro_serialize_size(void)
 {
   size_t size = 0;
 
+  Core::System& system = Core::System::GetInstance();
+  AsyncRequests* ar = AsyncRequests::GetInstance();
+
+  if (system.IsDualCoreMode())
+    ar->SetPassthrough(true);
+
   Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
     PointerWrap p((u8**)&size, sizeof(size_t), PointerWrap::Mode::Measure);
     State::DoState(Core::System::GetInstance(), p);
     }, true);  // wait = true
+
+  if (system.IsDualCoreMode())
+    ar->SetPassthrough(false);
 
   return size;
 }
 
 bool retro_serialize(void* data, size_t size)
 {
+  Core::System& system = Core::System::GetInstance();
+  AsyncRequests* ar = AsyncRequests::GetInstance();
+
+  if (system.IsDualCoreMode())
+    ar->SetPassthrough(true);
+
   Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
+
     PointerWrap p((u8**)&data, size, PointerWrap::Mode::Write);
     State::DoState(Core::System::GetInstance(), p);
   }, true);
+
+  if (system.IsDualCoreMode())
+    ar->SetPassthrough(false);
 
   return true;
 }
 bool retro_unserialize(const void* data, size_t size)
 {
+  Core::System& system = Core::System::GetInstance();
+  AsyncRequests* ar = AsyncRequests::GetInstance();
+
+  if (system.IsDualCoreMode())
+    ar->SetPassthrough(true);
+
   Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
     PointerWrap p((u8**)&data, size, PointerWrap::Mode::Read);
     State::DoState(Core::System::GetInstance(), p);
   }, true);
+
+  if (system.IsDualCoreMode())
+    ar->SetPassthrough(false);
 
   return true;
 }

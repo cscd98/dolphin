@@ -6,6 +6,7 @@
 
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
+#include "Common/Version.h"
 #include "Core/Boot/Boot.h"
 #include "Core/BootManager.h"
 #include "Core/Config/GraphicsSettings.h"
@@ -103,6 +104,7 @@ bool retro_load_game(const struct retro_game_info* game)
     return true; // Always "continue"
   });
 
+  INFO_LOG_FMT(COMMON, "SCM Git revision: {}", Common::GetScmRevGitStr());
   INFO_LOG_FMT(COMMON, "User Directory set to '{}'", user_dir);
   INFO_LOG_FMT(COMMON, "System Directory set to '{}'", sys_dir);
 

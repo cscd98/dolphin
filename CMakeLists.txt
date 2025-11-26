@@ -830,11 +830,8 @@ else()
   message(STATUS "libsystemd not found, disabling traversal server watchdog support")
 endif()
 
-if (MSVC)
-  include_directories(Externals/WIL/include)
-endif()
-
 if (WIN32)
+  include_directories(Externals/wil/include)
   include_directories(Externals/OpenAL/include)
 endif()
 

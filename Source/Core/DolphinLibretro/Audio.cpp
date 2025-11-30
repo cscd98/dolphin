@@ -18,21 +18,32 @@ static std::atomic<bool> g_buf_underrun{false};
 static bool call_back_audio{false};
 static bool g_audio_state_cb{false};
 
-unsigned int GetSampleRate()
+unsigned int GetInitialSampleRate()
+{
+  unsigned int sampleRate = DEFAULT_SAMPLE_RATE;
+
+  if(!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE, &sampleRate))
+  {
+    DEBUG_LOG_FMT(VIDEO, "Get target sample Rate not supported");
+  }
+
+  return sampleRate;
+}
+
+unsigned int GetActiveSampleRate()
 {
   // when called from retro_run
   SoundStream* sound_stream = Core::System::GetInstance().GetSoundStream();
-  double sampleRate = Libretro::Options::GetCached<int>(Libretro::Options::audio::MIXER_RATE);
-  if (sound_stream && sound_stream->GetMixer() &&
-      sound_stream->GetMixer()->GetSampleRate() != 0)
-    return sound_stream->GetMixer()->GetSampleRate();
-  // used in Stream constructor
-  if (Core::System::GetInstance().IsWii())
-    return sampleRate;
-  else if (sampleRate == 32000u)
-    return 32029;
 
-  return 48043;
+  if (sound_stream && sound_stream->GetMixer() &&
+    sound_stream->GetMixer()->GetSampleRate() != 0)
+  {
+    return sound_stream->GetMixer()->GetSampleRate();
+  }
+
+  unsigned int sampleRate = GetInitialSampleRate();
+
+  return sampleRate;
 }
 
 void Reset()
@@ -92,10 +103,6 @@ inline unsigned GetSamplesForFrame(unsigned sample_rate)
 
 bool Stream::Init()
 {
-  m_sample_rate = GetSampleRate();
-
-  GetMixer()->SetSampleRate(m_sample_rate);
-
   return true;
 }
 
@@ -107,35 +114,16 @@ bool Stream::IsValid()
   return false;
 }
 
-void Stream::MixAndPush(unsigned int num_samples)
-{
-  static unsigned pending = 0;
-  pending += num_samples;
+// Input:
+// GameCube DMA: 32029 Hz
+// GameCube Streaming: 48043 Hz
+// Wii DMA: 32000 Hz
+// Wii Streaming: 48000 Hz
 
-  if (pending < MIN_SAMPLES)
-    return; // not enough yet
+// Output is 48000 Hz (Wii) (or 48043 Hz for GameCube)
+// Wii: Uses divisor 1125 * 2 = 2250 = exactly 48000 Hz
+// GameCube: Uses divisor 1124 * 2 = 2248 = 48043 Hz
 
-  unsigned avail = pending;
-  pending = 0; // consume all
-
-  // First push the minimum threshold block
-  m_mixer->Mix(m_buffer, MIN_SAMPLES);
-  batch_cb(m_buffer, MIN_SAMPLES);
-  avail -= MIN_SAMPLES;
-
-  // Then push any remaining in MAX_SAMPLES chunks
-  while (avail > MAX_SAMPLES)
-  {
-    m_mixer->Mix(m_buffer, MAX_SAMPLES);
-    batch_cb(m_buffer, MAX_SAMPLES);
-    avail -= MAX_SAMPLES;
-  }
-  if (avail)
-  {
-    m_mixer->Mix(m_buffer, avail);
-    batch_cb(m_buffer, avail);
-  }
-}
 
 void Stream::Update(unsigned int num_samples)
 {
@@ -143,10 +131,61 @@ void Stream::Update(unsigned int num_samples)
     return;
   }
 
-  if (!m_mixer || !batch_cb)
+  // now a nop
+}
+
+void Stream::MixAndPush(unsigned int num_samples)
+{
+  static unsigned pending = 0;
+  pending += num_samples;
+
+  if (pending < MIN_SAMPLES)
     return;
 
-  MixAndPush(num_samples);
+  unsigned avail = pending;
+  pending = 0;
+
+  while (avail >= MAX_SAMPLES)
+  {
+    m_mixer->Mix(m_buffer, MAX_SAMPLES);
+    batch_cb(m_buffer, MAX_SAMPLES);
+    avail -= MAX_SAMPLES;
+  }
+  
+  if (avail >= MIN_SAMPLES)
+  {
+    m_mixer->Mix(m_buffer, avail);
+    batch_cb(m_buffer, avail);
+  }
+  else if (avail > 0)
+  {
+    pending = avail;
+  }
+}
+
+// NEW: Call this from retro_run() once per frame
+void Stream::PushAudioForFrame()
+{
+  if (call_back_audio || !m_mixer || !batch_cb)
+    return;
+
+  // Calculate samples needed for this frame at output rate
+  unsigned samples_for_frame;
+  
+  if (FrameTiming::IsEnabled())
+  {
+    samples_for_frame = GetSamplesForFrame(m_sample_rate);
+  }
+  else
+  {
+    // Fallback: assume 60 FPS
+    samples_for_frame = m_sample_rate / 60;
+  }
+  
+  // Clamp to valid range
+  samples_for_frame = std::clamp(samples_for_frame, MIN_SAMPLES, MAX_SAMPLES);
+  
+  MixAndPush(samples_for_frame);
 }
 
 void Stream::ProcessCallBack()
@@ -154,8 +193,6 @@ void Stream::ProcessCallBack()
   if (!m_mixer || !batch_cb || !Libretro::g_emuthread_launched)
     return;
 
-  // True: Audio driver in frontend is active
-  // False: Audio driver in frontend is paused or inactive
   if (!Libretro::Audio::g_audio_state_cb)
     return;
 
@@ -170,17 +207,13 @@ void Stream::ProcessCallBack()
     if (occ >= MAX_SAMPLES)
       return;
 
-    // Use frame time to decide how much to push
     unsigned to_mix = GetSamplesForFrame(m_sample_rate);
     m_mixer->Mix(m_buffer, to_mix);
     batch_cb(m_buffer, to_mix);
-
     return;
   }
 
   unsigned to_mix = GetSamplesForFrame(m_sample_rate);
-
-  // Clamp to sane range
   to_mix = std::clamp(to_mix, MIN_SAMPLES, MAX_SAMPLES);
   m_mixer->Mix(m_buffer, to_mix);
   batch_cb(m_buffer, to_mix);

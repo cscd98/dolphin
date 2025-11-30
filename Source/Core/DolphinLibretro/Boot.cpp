@@ -165,13 +165,19 @@ bool retro_load_game(const struct retro_game_info* game)
                             /*def=*/false)); // true is the standalone default
 
   Config::SetBase(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
-                     Libretro::GetOption<bool>(sysconf::WIIMOTE_CONTINUOUS_SCANNING,
+                  Libretro::GetOption<bool>(sysconf::WIIMOTE_CONTINUOUS_SCANNING,
                                              /*def=*/false));
   Config::SetBase(Config::MAIN_MMU,
-                     Libretro::GetOption<bool>(core::MAIN_MMU, /*def=*/false));
+                  Libretro::GetOption<bool>(core::MAIN_MMU, /*def=*/false));
 
   Config::SetBase(Config::MAIN_FAST_DISC_SPEED,
-                     Libretro::GetOption<bool>(core::FAST_DISC_SPEED, /*def=*/false));
+                  Libretro::GetOption<bool>(core::FAST_DISC_SPEED, /*def=*/false));
+
+  Config::SetBase(Config::MAIN_RUSH_FRAME_PRESENTATION,
+                  Libretro::GetOption<bool>(core::RUSH_FRAME_PRESENTATION, /*def=*/false));
+
+  Config::SetBase(Config::MAIN_SMOOTH_EARLY_PRESENTATION,
+                  Libretro::GetOption<bool>(core::SMOOTH_EARLY_PRESENTATION, /*def=*/false));
 
   // Main.Interface
   Config::SetBase(Config::MAIN_OSD_MESSAGES,

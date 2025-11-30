@@ -15,28 +15,41 @@ retro_audio_sample_batch_t batch_cb = nullptr;
 static std::atomic<bool> g_buf_support{false};
 static std::atomic<unsigned> g_buf_occupancy{0};
 static std::atomic<bool> g_buf_underrun{false};
-static bool call_back_audio{false};
+static bool g_use_call_back_audio{false};
 static bool g_audio_state_cb{false};
+static bool g_push_samples_immediately{false};
 
-unsigned int GetSampleRate()
+unsigned int GetInitialSampleRate()
+{
+  unsigned int sampleRate = DEFAULT_SAMPLE_RATE;
+
+  if(!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE, &sampleRate))
+  {
+    DEBUG_LOG_FMT(VIDEO, "Get target sample Rate not supported");
+  }
+
+  return sampleRate;
+}
+
+unsigned int GetActiveSampleRate()
 {
   // when called from retro_run
   SoundStream* sound_stream = Core::System::GetInstance().GetSoundStream();
-  double sampleRate = Libretro::Options::GetCached<int>(Libretro::Options::audio::MIXER_RATE);
-  if (sound_stream && sound_stream->GetMixer() &&
-      sound_stream->GetMixer()->GetSampleRate() != 0)
-    return sound_stream->GetMixer()->GetSampleRate();
-  // used in Stream constructor
-  if (Core::System::GetInstance().IsWii())
-    return sampleRate;
-  else if (sampleRate == 32000u)
-    return 32029;
 
-  return 48043;
+  if (sound_stream && sound_stream->GetMixer() &&
+    sound_stream->GetMixer()->GetSampleRate() != 0)
+  {
+    return sound_stream->GetMixer()->GetSampleRate();
+  }
+
+  unsigned int sampleRate = GetInitialSampleRate();
+
+  return sampleRate;
 }
 
 void Reset()
 {
+  g_use_call_back_audio = Libretro::Options::GetCached<bool>(Libretro::Options::audio::CALL_BACK_AUDIO);
   g_audio_state_cb = false;
 }
 
@@ -44,9 +57,7 @@ void Init()
 {
   Reset();
 
-  call_back_audio = Libretro::Options::GetCached<bool>(Libretro::Options::audio::CALL_BACK_AUDIO);
-
-  if (!call_back_audio)
+  if (!g_use_call_back_audio)
     return;
 
   retro_audio_callback racb = {};
@@ -55,14 +66,15 @@ void Init()
 
   if (!Libretro::environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK, &racb))
   {
-    call_back_audio = false;
+    g_use_call_back_audio = false;
     DEBUG_LOG_FMT(VIDEO, "Async audio callback not supported; fallback to sync");
     return;
   }
 
+  // check if frame timing call backs were successful
   if(!FrameTiming::IsEnabled())
   {
-    call_back_audio = false;
+    g_use_call_back_audio = false;
     DEBUG_LOG_FMT(VIDEO, "Async audio callback not enabled as FrameTiming not available");
     return;
   }
@@ -92,10 +104,6 @@ inline unsigned GetSamplesForFrame(unsigned sample_rate)
 
 bool Stream::Init()
 {
-  m_sample_rate = GetSampleRate();
-
-  GetMixer()->SetSampleRate(m_sample_rate);
-
   return true;
 }
 
@@ -105,6 +113,26 @@ bool Stream::IsValid()
     return true;
 
   return false;
+}
+
+void Stream::Update(unsigned int num_samples)
+{
+  if (g_use_call_back_audio) {
+    return;
+  }
+
+  if (!m_mixer || !batch_cb)
+    return;
+
+  if (!g_push_samples_immediately)
+    return;
+
+  // First push the minimum threshold block
+  m_mixer->Mix(m_buffer, MIN_SAMPLES);
+  batch_cb(m_buffer, MIN_SAMPLES);
+  num_samples -= MIN_SAMPLES;
+
+  MixAndPush(num_samples);
 }
 
 void Stream::MixAndPush(unsigned int num_samples)
@@ -118,40 +146,62 @@ void Stream::MixAndPush(unsigned int num_samples)
   unsigned avail = pending;
   pending = 0; // consume all
 
-  // First push the minimum threshold block
-  m_mixer->Mix(m_buffer, MIN_SAMPLES);
-  batch_cb(m_buffer, MIN_SAMPLES);
-  avail -= MIN_SAMPLES;
-
-  // Then push any remaining in MAX_SAMPLES chunks
-  while (avail > MAX_SAMPLES)
+  // Then push any remaining in MAX_SAMPLES chunk
+  while (avail >= MAX_SAMPLES)
   {
     m_mixer->Mix(m_buffer, MAX_SAMPLES);
     batch_cb(m_buffer, MAX_SAMPLES);
     avail -= MAX_SAMPLES;
   }
-  if (avail)
+  
+  if (avail >= MIN_SAMPLES)
   {
     m_mixer->Mix(m_buffer, avail);
     batch_cb(m_buffer, avail);
   }
-}
-
-void Stream::Update(unsigned int num_samples)
-{
-  if (call_back_audio) {
-    return;
+  else if (avail > 0)
+  {
+    pending = avail;
   }
-
-  if (!m_mixer || !batch_cb)
-    return;
-
-  MixAndPush(num_samples);
 }
 
+void Stream::PushAudioForFrame()
+{
+  if (g_use_call_back_audio || !m_mixer || !batch_cb)
+    return;
+
+  // Calculate samples needed for this frame at output rate
+  unsigned samples_for_frame;
+  
+  if (FrameTiming::IsEnabled())
+  {
+    samples_for_frame = GetSamplesForFrame(m_sample_rate);
+  }
+  else
+  {
+    if (retro_get_region() == RETRO_REGION_NTSC)
+      samples_for_frame = m_sample_rate / 60;
+    else
+      samples_for_frame = m_sample_rate / 50;
+  }
+  
+  samples_for_frame = std::clamp(samples_for_frame, MIN_SAMPLES, MAX_SAMPLES);
+  
+  MixAndPush(samples_for_frame);
+}
+
+// Input:
+// GameCube DMA: 32029 Hz
+// GameCube Streaming: 48043 Hz
+// Wii DMA: 32000 Hz
+// Wii Streaming: 48000 Hz
+
+// Output is 48000 Hz (Wii) (or 48043 Hz for GameCube)
+// Wii: Uses divisor 1125 * 2 = 2250 = exactly 48000 Hz
+// GameCube: Uses divisor 1124 * 2 = 2248 = 48043 Hz
 void Stream::ProcessCallBack()
 {
-  if (!m_mixer || !batch_cb || !Libretro::g_emuthread_launched)
+  if (!m_mixer || !batch_cb || !Libretro::g_emuthread_launched || !g_use_call_back_audio)
     return;
 
   // True: Audio driver in frontend is active
@@ -179,7 +229,6 @@ void Stream::ProcessCallBack()
   }
 
   unsigned to_mix = GetSamplesForFrame(m_sample_rate);
-
   // Clamp to sane range
   to_mix = std::clamp(to_mix, MIN_SAMPLES, MAX_SAMPLES);
   m_mixer->Mix(m_buffer, to_mix);
@@ -191,30 +240,24 @@ namespace FrameTiming
 {
   std::atomic<retro_usec_t> target_frame_duration_usec{16667};
   std::atomic<retro_usec_t> measured_frame_duration_usec{16667};
-  bool use_frame_time_cb = false;
+  bool g_have_frame_time_cb {false};
 
   static retro_frame_time_callback ftcb = {};
   static auto last_frame_time = std::chrono::steady_clock::now();
 
   void Reset()
   {
-    use_frame_time_cb = false;
+    g_have_frame_time_cb = false;
   }
 
   void Init()
   {
     Reset();
 
-    use_frame_time_cb = Libretro::Options::GetCached<bool>(Libretro::Options::audio::CALL_BACK_AUDIO);
-
-    if (!use_frame_time_cb)
-      return;
-
     // Get target refresh rate from frontend
     float refresh_rate = 60.0f;
     if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE, &refresh_rate))
     {
-      use_frame_time_cb = false;
       DEBUG_LOG_FMT(VIDEO, "frame timing: unable to get target refresh rate");
       return;
     }
@@ -232,7 +275,6 @@ namespace FrameTiming
 
     if (!Libretro::environ_cb(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &ftcb))
     {
-      use_frame_time_cb = false;
       DEBUG_LOG_FMT(VIDEO, "frame timing: unable to set frame time callback");
       return;
     }
@@ -240,11 +282,14 @@ namespace FrameTiming
     last_frame_time = std::chrono::steady_clock::now();
     DEBUG_LOG_FMT(VIDEO, "frame timing enabled: target={} usec ({} Hz)",
                   ftcb.reference, refresh_rate);
+
+    // successful callbacks
+    g_have_frame_time_cb = true;
   }
 
   bool IsEnabled()
   {
-    return use_frame_time_cb;
+    return g_have_frame_time_cb;
   }
 
   bool IsFastForwarding()
@@ -272,7 +317,7 @@ namespace FrameTiming
 
   void ThrottleFrame()
   {
-    if (!use_frame_time_cb)
+    if (!g_have_frame_time_cb)
       return;
 
     auto now = std::chrono::steady_clock::now();
@@ -315,10 +360,10 @@ void retroarch_audio_cb()
 
 void retroarch_audio_buffer_status_cb(bool active,
                                       unsigned occupancy,
-                                      bool underrun)
+                                      bool underrun_likely)
 {
   Libretro::Audio::g_buf_occupancy.store(occupancy, std::memory_order_relaxed);
-  Libretro::Audio::g_buf_underrun.store(underrun, std::memory_order_relaxed);
+  Libretro::Audio::g_buf_underrun.store(underrun_likely, std::memory_order_relaxed);
 }
 
 // retroarch hooks

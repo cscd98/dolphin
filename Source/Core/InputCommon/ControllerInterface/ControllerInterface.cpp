@@ -58,7 +58,7 @@ void ControllerInterface::Initialize(const WindowSystemInfo& wsi)
 
   m_populating_devices_counter = 1;
 
-#if defined(CIFACE_USE_WIN32) && !defined(__LIBRETRO__)
+#if defined(CIFACE_USE_WIN32)
   m_input_backends.emplace_back(ciface::Win32::CreateInputBackend(this));
 #endif
 #ifdef CIFACE_USE_XLIB

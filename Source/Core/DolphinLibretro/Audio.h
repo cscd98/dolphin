@@ -12,21 +12,26 @@ namespace Audio
 {
 extern retro_audio_sample_batch_t batch_cb;
 static constexpr unsigned int MIN_SAMPLES = 96;
-static constexpr unsigned int MAX_SAMPLES = 512;
+static constexpr unsigned int MAX_SAMPLES = 1024;
+static constexpr unsigned int DEFAULT_SAMPLE_RATE = 48000;
 
 void Reset();
 void Init();
-unsigned int GetSampleRate();
+unsigned int GetInitialSampleRate();
+unsigned int GetActiveSampleRate();
 
 class Stream final : public SoundStream
 {
 public:
-  bool Init() override;
+  Stream(unsigned int backendSampleRate = DEFAULT_SAMPLE_RATE)
+  : SoundStream(GetInitialSampleRate()) {}
 
+  bool Init() override;
   static bool IsValid();
 
   bool SetRunning(bool running) override { return true; }
 
+  void PushAudioForFrame();
   void MixAndPush(unsigned int num_samples);
   void Update(unsigned int num_samples) override;
 
@@ -44,7 +49,7 @@ namespace FrameTiming
 {
   extern std::atomic<retro_usec_t> target_frame_duration_usec;
   extern std::atomic<retro_usec_t> measured_frame_duration_usec;
-  extern bool use_frame_time_cb;
+  extern bool g_have_frame_time_cb;
 
   void Init();
   void Reset();

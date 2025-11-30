@@ -6,7 +6,11 @@
 #ifdef _WIN32
 
 // clang-format off
+#ifdef __MINGW32__
+#include <audioclient.h>
+#else
 #include <Audioclient.h>
+#endif
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <wil/resource.h>

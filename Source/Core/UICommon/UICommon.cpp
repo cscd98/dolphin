@@ -13,9 +13,7 @@
 #ifdef _WIN32
 #include <shlobj.h>  // for SHGetFolderPath
 
-#ifndef __MINGW32__
 #include <wil/resource.h>
-#endif
 #endif
 
 #include <fmt/format.h>

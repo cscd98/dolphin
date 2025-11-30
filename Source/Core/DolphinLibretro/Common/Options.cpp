@@ -289,6 +289,34 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::core::RUSH_FRAME_PRESENTATION,
+    "Core > Rush Frame Presentation",
+    "Rush Frame Presentation",
+    "Enable rushing frame presentation for lower latency.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::core::SMOOTH_EARLY_PRESENTATION,
+    "Core > Smooth Early Presentation",
+    "Smooth Early Presentation",
+    "Enable smoother early frame presentation timing.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== Main.Interface ==========
   {
@@ -367,20 +395,6 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "enabled"
-  },
-  {
-    Libretro::Options::audio::MIXER_RATE,
-    "Audio / DSP > Audio Mixer Rate",
-    "Audio Mixer Rate",
-    "Audio sample rate.",
-    nullptr,
-    CATEGORY_AUDIO,
-    {
-      { "32000", "32000 Hz" },
-      { "48000", "48000 Hz" },
-      { nullptr, nullptr }
-    },
-    "32000"
   },
   {
     Libretro::Options::audio::CALL_BACK_AUDIO,

@@ -87,7 +87,7 @@ PRIVATE
   spng::spng
 )
 
-if(WIN32 AND NOT LIBRETRO) 
+if(WIN32)
   target_sources(inputcommon PRIVATE
     ControllerInterface/DInput/DInput.cpp
     ControllerInterface/DInput/DInput.h
@@ -109,9 +109,14 @@ if(WIN32 AND NOT LIBRETRO)
     ControllerInterface/ForceFeedback/ForceFeedbackDevice.h
   )
   if(MINGW)
+    set_source_files_properties(
+      ControllerInterface/WGInput/WGInput.cpp
+      PROPERTIES COMPILE_OPTIONS "-fexceptions"
+    )
     target_link_libraries(inputcommon
       PRIVATE
       dinput8
+      cfgmgr32
     )
   endif()
 elseif(APPLE AND NOT LIBRETRO)

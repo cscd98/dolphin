@@ -289,6 +289,34 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::core::RUSH_FRAME_PRESENTATION,
+    "Core > Rush Frame Presentation",
+    "Rush Frame Presentation",
+    "Enable rushing frame presentation for lower latency.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::core::SMOOTH_EARLY_PRESENTATION,
+    "Core > Smooth Early Presentation",
+    "Smooth Early Presentation",
+    "Enable smoother early frame presentation timing.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
 
   // ========== Main.Interface ==========
   {
@@ -369,32 +397,19 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "enabled"
   },
   {
-    Libretro::Options::audio::MIXER_RATE,
-    "Audio / DSP > Audio Mixer Rate",
-    "Audio Mixer Rate",
-    "Audio sample rate.",
-    nullptr,
-    CATEGORY_AUDIO,
-    {
-      { "32000", "32000 Hz" },
-      { "48000", "48000 Hz" },
-      { nullptr, nullptr }
-    },
-    "32000"
-  },
-  {
     Libretro::Options::audio::CALL_BACK_AUDIO,
     "Audio / DSP > Async Audio Callback",
     "Async Audio Callback",
     "Use asynchronous audio callbacks.",
-    "Pushes audio asynchronously instead of synchronously.",
+    "Pushes audio asynchronously instead of synchronously. Restart core to take affect.",
     CATEGORY_AUDIO,
     {
-      { "disabled", nullptr },
-      { "enabled",  nullptr },
+      { "0", "Sync - Dolphin will push samples" },
+      { "1",  "Sync - Per Frame using target refresh rate" },
+      { "2",  "Async - driven by callbacks using refresh rate and audio buffer status" },
       { nullptr, nullptr }
     },
-    "disabled"
+    "0"
   },
 
   // ========== SYSCONF.IPL ==========

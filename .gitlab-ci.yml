@@ -109,7 +109,7 @@ libretro-build-ios-arm64:
     - .core-defs
   variables:
     CMAKE_ADDL_COMP_FLAGS: ""
-    IOS_MINVER: 13.0
+    IOS_MINVER: 14.0
 
 # tvOS arm64
 libretro-build-tvos-arm64:
@@ -118,4 +118,4 @@ libretro-build-tvos-arm64:
     - .core-defs
   variables:
     CMAKE_ADDL_COMP_FLAGS: ""
-    MINVER: 13.0
+    MINVER: 14.0

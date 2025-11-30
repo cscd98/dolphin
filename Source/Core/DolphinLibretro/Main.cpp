@@ -122,7 +122,7 @@ void retro_get_system_av_info(retro_system_av_info* info)
 
   info->geometry.aspect_ratio = Libretro::widescreen ? 16.0 / 9.0 : 4.0 / 3.0;
   info->timing.fps = (retro_get_region() == RETRO_REGION_NTSC) ? (60.0f / 1.001f) : 50.0f;
-  info->timing.sample_rate = Libretro::Audio::GetSampleRate();
+  info->timing.sample_rate = Libretro::Audio::GetActiveSampleRate();
 }
 
 void retro_reset(void)
@@ -259,6 +259,15 @@ void retro_run(void)
   }
 
   RETRO_PERFORMANCE_STOP(dolphin_main_func);
+
+  if (auto* sound_stream = system.GetSoundStream())
+  {
+    auto* libretro_stream = static_cast<Libretro::Audio::Stream*>(sound_stream);
+    if (libretro_stream)
+    {
+      libretro_stream->PushAudioForFrame();
+    }
+  }
 }
 
 size_t retro_serialize_size(void)

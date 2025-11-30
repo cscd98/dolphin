@@ -6,10 +6,13 @@
 #ifdef _WIN32
 
 // clang-format off
-#include <Audioclient.h>
+#include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <wil/resource.h>
+#ifdef __MINGW32__
+#include "Common/WILShim.h"
+#endif
 // clang-format on
 
 #include <thread>

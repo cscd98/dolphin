@@ -12,10 +12,10 @@
 #include <sstream>
 #ifdef _WIN32
 #include <shlobj.h>  // for SHGetFolderPath
-
-#ifndef __MINGW32__
-#include <wil/resource.h>
+#ifdef __MINGW32__
+#include "Common/WILShim.h"
 #endif
+#include <wil/resource.h>
 #endif
 
 #include <fmt/format.h>

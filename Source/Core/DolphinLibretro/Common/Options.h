@@ -128,6 +128,8 @@ namespace core {
   constexpr const char LANGUAGE[] = "dolphin_language";
   constexpr const char FAST_DISC_SPEED[] = "dolphin_fast_disc_speed";
   constexpr const char MAIN_MMU[] = "dolphin_main_mmu";
+  constexpr const char RUSH_FRAME_PRESENTATION[] = "dolphin_rush_presentation";
+  constexpr const char SMOOTH_EARLY_PRESENTATION[] = "dolphin_early_presentation";
 }  // namespace core
 
 // ======================================================
@@ -136,8 +138,7 @@ namespace core {
   namespace audio {
   constexpr const char DSP_HLE[] = "dolphin_dsp_hle";
   constexpr const char DSP_JIT[] = "dolphin_dsp_jit";
-  constexpr const char MIXER_RATE[] = "dolphin_mixer_rate";
-  constexpr const char CALL_BACK_AUDIO[] = "dolphin_call_back_audio";
+  constexpr const char CALL_BACK_AUDIO[] = "dolphin_call_back_audio_method";
 }  // namespace audio
 
 // ======================================================

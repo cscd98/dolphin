@@ -149,6 +149,7 @@
     <ClInclude Include="Common\Mutex.h" />
     <ClInclude Include="Common\NandPaths.h" />
     <ClInclude Include="Common\Network.h" />
+    <ClInclude Include="Common\OneShotEvent.h" />
     <ClInclude Include="Common\PcapFile.h" />
     <ClInclude Include="Common\Profiler.h" />
     <ClInclude Include="Common\Projection.h" />
@@ -413,6 +414,7 @@
     <ClInclude Include="Core\IOS\USB\Bluetooth\WiimoteHIDAttr.h" />
     <ClInclude Include="Core\IOS\USB\Common.h" />
     <ClInclude Include="Core\IOS\USB\Emulated\Infinity.h" />
+    <ClInclude Include="Core\IOS\USB\Emulated\LogitechMic.h" />
     <ClInclude Include="Core\IOS\USB\Emulated\Microphone.h" />
     <ClInclude Include="Core\IOS\USB\Emulated\Skylanders\Skylander.h" />
     <ClInclude Include="Core\IOS\USB\Emulated\Skylanders\SkylanderCrypto.h" />
@@ -455,6 +457,7 @@
     <ClInclude Include="Core\PowerPC\Interpreter\ExceptionUtils.h" />
     <ClInclude Include="Core\PowerPC\Interpreter\Interpreter_FPUtils.h" />
     <ClInclude Include="Core\PowerPC\Interpreter\Interpreter.h" />
+    <ClInclude Include="Core\PowerPC\JitCommon\ConstantPropagation.h" />
     <ClInclude Include="Core\PowerPC\JitCommon\DivUtils.h" />
     <ClInclude Include="Core\PowerPC\JitCommon\JitAsmCommon.h" />
     <ClInclude Include="Core\PowerPC\JitCommon\JitBase.h" />
@@ -1094,6 +1097,7 @@
     <ClCompile Include="Core\IOS\USB\Bluetooth\WiimoteHIDAttr.cpp" />
     <ClCompile Include="Core\IOS\USB\Common.cpp" />
     <ClCompile Include="Core\IOS\USB\Emulated\Infinity.cpp" />
+    <ClCompile Include="Core\IOS\USB\Emulated\LogitechMic.cpp" />
     <ClCompile Include="Core\IOS\USB\Emulated\Microphone.cpp" />
     <ClCompile Include="Core\IOS\USB\Emulated\Skylanders\Skylander.cpp" />
     <ClCompile Include="Core\IOS\USB\Emulated\Skylanders\SkylanderCrypto.cpp" />
@@ -1139,6 +1143,7 @@
     <ClCompile Include="Core\PowerPC\Interpreter\Interpreter_SystemRegisters.cpp" />
     <ClCompile Include="Core\PowerPC\Interpreter\Interpreter_Tables.cpp" />
     <ClCompile Include="Core\PowerPC\Interpreter\Interpreter.cpp" />
+    <ClCompile Include="Core\PowerPC\JitCommon\ConstantPropagation.cpp" />
     <ClCompile Include="Core\PowerPC\JitCommon\DivUtils.cpp" />
     <ClCompile Include="Core\PowerPC\JitCommon\JitAsmCommon.cpp" />
     <ClCompile Include="Core\PowerPC\JitCommon\JitBase.cpp" />

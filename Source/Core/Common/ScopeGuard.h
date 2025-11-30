@@ -18,7 +18,7 @@ public:
 #ifdef __LIBRETRO__
     other.m_finalizer.reset();
 #else
-    other.m_finalizer = nullptr;
+    other.Dismiss();
 #endif
   }
 

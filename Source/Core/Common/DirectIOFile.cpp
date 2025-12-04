@@ -86,8 +86,11 @@ bool DirectIOFile::Open(const std::string& path, AccessMode access_mode, OpenMod
   else if (access_mode == AccessMode::Write)
     desired_access = GENERIC_WRITE;
 
-  // Allow deleting and renaming through our handle.
-  desired_access |= DELETE;
+  if (access_mode != AccessMode::Read)
+  {
+    // Allow deleting and renaming through our handle.
+    desired_access |= DELETE;
+  }
 
 #ifdef __LIBRETRO__
   // The DELETE flag prevents the Libretro implementation of RetroAchievements from
@@ -128,28 +131,19 @@ bool DirectIOFile::Open(const std::string& path, AccessMode access_mode, OpenMod
     else if (access_mode == AccessMode::Write)
       open_mode_str = "w";
 
-    // FYI: File::Exists can be slow on Android.
-    Common::Lazy<bool> file_exists{[&] { return Exists(path); }};
+    if (open_mode == OpenMode::Truncate)
+      open_mode_str += 't';
 
-    // A few features are emulated in a non-atomic manner.
-    if (open_mode == OpenMode::Existing)
+    if (open_mode == OpenMode::Create)
     {
-      if (access_mode != AccessMode::Read && !*file_exists)
-        return false;
-    }
-    else
-    {
-      if (open_mode == OpenMode::Truncate)
-        open_mode_str += 't';
-      else if (open_mode == OpenMode::Create && *file_exists)
-        return false;
-
-      // Modes other than `Existing` may create a file, but "r" won't do that automatically.
-      if (access_mode == AccessMode::Read && !*file_exists)
-        CreateEmptyFile(path);
+      ASSERT_MSG(COMMON, false, "DirectIOFile doesn't support creating SAF files");
+      return false;
     }
 
     m_fd = OpenAndroidContent(path, open_mode_str);
+
+    if (!IsOpen() && (open_mode == OpenMode::Always || open_mode == OpenMode::Truncate))
+      ASSERT_MSG(COMMON, Exists(path), "DirectIOFile doesn't support creating SAF files");
 
     return IsOpen();
   }

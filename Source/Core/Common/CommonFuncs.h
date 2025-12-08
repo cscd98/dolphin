@@ -5,6 +5,9 @@
 
 #include <optional>
 #include <string>
+#ifdef __MINGW32__
+#include <sys/stat.h>
+#endif
 
 #include "Common/CommonTypes.h"
 
@@ -27,8 +30,10 @@
 #define fseeko _fseeki64
 #define ftello _ftelli64
 #define atoll _atoi64
+#ifndef __MINGW32__
 #define stat _stat64
 #define fstat _fstat64
+#endif
 #define fileno _fileno
 
 extern "C" {

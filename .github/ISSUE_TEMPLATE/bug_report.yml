@@ -3,22 +3,6 @@ description: Report a problem with the libretro port of Dolphin
 title: "[Bug]: "
 labels: [bug]
 body:
-  - type: input
-    id: dolphin_version
-    attributes:
-      label: Dolphin version
-      description: The exact Dolphin core version you are using
-    validations:
-      required: true
-
-  - type: input
-    id: retroarch_version
-    attributes:
-      label: RetroArch version
-      description: The exact RetroArch version you are using
-    validations:
-      required: true
-
   - type: dropdown
     id: platform
     attributes:
@@ -46,6 +30,7 @@ body:
         - Vulkan
         - OpenGL/OpenGLES
         - D3D11
+        - D3D12
         - Other
     validations:
       required: true

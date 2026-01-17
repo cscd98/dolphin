@@ -30,10 +30,8 @@
 #define fseeko _fseeki64
 #define ftello _ftelli64
 #define atoll _atoi64
-#ifndef stat
+#ifndef __MINGW32__
 #define stat _stat64
-#endif
-#ifndef fstat
 #define fstat _fstat64
 #endif
 #define fileno _fileno

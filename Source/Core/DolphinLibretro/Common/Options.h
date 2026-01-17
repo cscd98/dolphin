@@ -184,6 +184,7 @@ namespace sysconf {
   constexpr const char WII_SPEAK_ENABLE[] = "dolphin_wiispeak_enable";
   constexpr const char WII_SPEAK_MUTED[] = "dolphin_wiispeak_muted";
   constexpr const char WII_LOGI_MICROPHONE_ENABLE[] = "dolphin_wii_logi_microphone_enable";
+  constexpr const char ENABLE_LIBRETRO_VFS[] = "dolphin_libretro_vfs_enabled";
 }  // namespace sysconf
 
 // ======================================================

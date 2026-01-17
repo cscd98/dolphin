@@ -168,6 +168,7 @@ namespace sysconf {
   constexpr const char ENABLE_RUMBLE[] = "dolphin_enable_rumble";
   constexpr const char WIIMOTE_CONTINUOUS_SCANNING[] = "dolphin_wiimote_continuous_scanning";
   constexpr const char ALT_GC_PORTS_ON_WII[] = "dolphin_alt_gc_ports_on_wii";
+  constexpr const char ENABLE_LIBRETRO_VFS[] = "dolphin_libretro_vfs_enabled";
 }  // namespace sysconf
 
 // ======================================================

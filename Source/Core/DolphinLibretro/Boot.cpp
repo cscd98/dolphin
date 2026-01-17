@@ -22,6 +22,7 @@
 #include "DolphinLibretro/Audio.h"
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Log.h"
+#include "DolphinLibretro/Common/File.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
@@ -43,8 +44,6 @@ extern retro_environment_t environ_cb;
 
 // Disk swapping
 static void InitDiskControlInterface();
-static std::string NormalizePath(const std::string& path);
-static std::string DenormalizePath(const std::string& path);
 static unsigned disk_index = 0;
 static bool eject_state;
 static std::vector<std::string> disk_paths;
@@ -77,6 +76,10 @@ bool retro_load_game(const struct retro_game_info* game)
   else
     sys_dir = "dolphin-emu" DIR_SEP "Sys";
 
+  using namespace Libretro::Options;
+  Libretro::Options::Init();
+  Libretro::File::Init();
+
 #ifdef ANDROID
   static bool sysdir_set = false;
 
@@ -107,10 +110,6 @@ bool retro_load_game(const struct retro_game_info* game)
   INFO_LOG_FMT(COMMON, "SCM Git revision: {}", Common::GetScmRevGitStr());
   INFO_LOG_FMT(COMMON, "User Directory set to '{}'", user_dir);
   INFO_LOG_FMT(COMMON, "System Directory set to '{}'", sys_dir);
-
-  using namespace Libretro::Options;
-
-  Libretro::Options::Init();
 
   // Main.Core
   Config::SetBase(Config::MAIN_CPU_CORE,
@@ -382,7 +381,7 @@ bool retro_load_game(const struct retro_game_info* game)
   NOTICE_LOG_FMT(VIDEO, "Using GFX backend: {}", Config::Get(Config::MAIN_GFX_BACKEND));
 
   std::vector<std::string> normalized_game_paths;
-  normalized_game_paths.push_back(Libretro::NormalizePath(game->path));
+  normalized_game_paths.push_back(Libretro::File::NormalizePath(game->path));
   std::string folder_path_str;
   std::string filename_str;
   std::string extension;
@@ -394,7 +393,7 @@ bool retro_load_game(const struct retro_game_info* game)
 
 #ifdef _WIN32
   // If SplitPath only gave us "D:", rebuild the real directory from the full path
-  if (folder_path_str.size() == 2 && folder_path_str[1] == ':')
+  if (!Libretro::File::HasVFS() && folder_path_str.size() == 2 && folder_path_str[1] == ':')
   {
     // take everything up to the last backslash
     size_t last_slash = normalized_game_paths.front().find_last_of("\\/");
@@ -415,7 +414,7 @@ bool retro_load_game(const struct retro_game_info* game)
   }
 
   for (auto& normalized_game_path : normalized_game_paths)
-    Libretro::disk_paths.push_back(Libretro::DenormalizePath(normalized_game_path));
+    Libretro::disk_paths.push_back(Libretro::File::DenormalizePath(normalized_game_path));
 
   Libretro::Input::Init(wsi);
 
@@ -469,36 +468,6 @@ void retro_unload_game(void)
 namespace Libretro
 {
 // Disk swapping
-
-// Dolphin expects to be able to use "/" (DIR_SEP) everywhere.
-// RetroArch uses the OS separator.
-// Convert between them when switching between systems.
-std::string NormalizePath(const std::string& path)
-{
-  std::string newPath = path;
-#ifdef _MSC_VER
-  constexpr fs::path::value_type os_separator = fs::path::preferred_separator;
-  static_assert(os_separator == DIR_SEP_CHR || os_separator == '\\', "Unsupported path separator");
-  if (os_separator != DIR_SEP_CHR)
-    std::replace(newPath.begin(), newPath.end(), '\\', DIR_SEP_CHR);
-#endif
-
-  return newPath;
-}
-
-std::string DenormalizePath(const std::string& path)
-{
-  std::string newPath = path;
-#ifdef _MSC_VER
-  constexpr fs::path::value_type os_separator = fs::path::preferred_separator;
-  static_assert(os_separator == DIR_SEP_CHR || os_separator == '\\', "Unsupported path separator");
-  if (os_separator != DIR_SEP_CHR)
-    std::replace(newPath.begin(), newPath.end(), DIR_SEP_CHR, '\\');
-#endif
-
-  return newPath;
-}
-
 static bool retro_set_eject_state(bool ejected)
 {
   if (eject_state == ejected)
@@ -512,7 +481,7 @@ static bool retro_set_eject_state(bool ejected)
     {
       Core::RunOnCPUThread(Core::System::GetInstance(), [] {
         Core::CPUThreadGuard guard{Core::System::GetInstance()};
-        const std::string path = NormalizePath(disk_paths[disk_index]);
+        const std::string path = Libretro::File::NormalizePath(disk_paths[disk_index]);
         Core::System::GetInstance().GetDVDInterface().ChangeDisc(guard, path);
       }, true);  // wait_for_completion = true
     }

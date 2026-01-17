@@ -65,6 +65,10 @@
 #include <sys/sysctl.h>
 #endif
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/Common/File.h"
+#endif
+
 namespace fs = std::filesystem;
 
 namespace File
@@ -97,6 +101,13 @@ FileInfo::FileInfo(const std::string& path) : FileInfo(path.c_str())
 
 FileInfo::FileInfo(const char* path)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+  {
+    Libretro::File::FileInfo(m_status, m_size, m_exists, path);
+    return;
+  }
+#endif
 #ifdef ANDROID
   if (IsPathAndroidContent(path))
   {
@@ -143,18 +154,31 @@ u64 FileInfo::GetSize() const
 // Returns true if the path exists
 bool Exists(const std::string& path)
 {
+#ifdef __LIBRETRO__
+  if(Libretro::File::HasVFS())
+    return Libretro::File::Exists(path);
+#endif
+
   return FileInfo(path).Exists();
 }
 
 // Returns true if the path exists and is a directory
 bool IsDirectory(const std::string& path)
 {
+#ifdef __LIBRETRO__
+  if(Libretro::File::HasVFS())
+    return Libretro::File::IsDirectory(path);
+#endif
   return FileInfo(path).IsDirectory();
 }
 
 // Returns true if the path exists and is a file
 bool IsFile(const std::string& path)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::IsFile(path);
+#endif
   return FileInfo(path).IsFile();
 }
 
@@ -163,6 +187,11 @@ bool IsFile(const std::string& path)
 bool Delete(const std::string& filename, IfAbsentBehavior behavior)
 {
   DEBUG_LOG_FMT(COMMON, "{}: file {}", __func__, filename);
+
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::Delete(filename);
+#endif
 
 #ifdef ANDROID
   if (filename.starts_with("content://"))
@@ -208,6 +237,11 @@ bool CreateDir(const std::string& path)
 {
   DEBUG_LOG_FMT(COMMON, "{}: directory {}", __func__, path);
 
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::CreateDir(path);
+#endif
+
   std::error_code error;
   auto native_path = StringToPath(path);
   bool success = fs::create_directory(native_path, error);
@@ -223,6 +257,11 @@ bool CreateDir(const std::string& path)
 bool CreateDirs(std::string_view path)
 {
   DEBUG_LOG_FMT(COMMON, "{}: directory {}", __func__, path);
+
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::CreateDirs(path);
+#endif
 
   std::error_code error;
   auto native_path = StringToPath(path);
@@ -240,6 +279,11 @@ bool CreateFullPath(std::string_view fullPath)
 {
   DEBUG_LOG_FMT(COMMON, "{}: path {}", __func__, fullPath);
 
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::CreateFullPath(fullPath);
+#endif
+
   std::error_code error;
   auto native_path = StringToPath(fullPath).parent_path();
   bool success = fs::create_directories(native_path, error);
@@ -256,6 +300,11 @@ bool CreateFullPath(std::string_view fullPath)
 bool DeleteDir(const std::string& filename, IfAbsentBehavior behavior)
 {
   DEBUG_LOG_FMT(COMMON, "{}: directory {}", __func__, filename);
+
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::DeleteDir(filename);
+#endif
 
   auto native_path = StringToPath(filename);
   std::error_code error;
@@ -290,6 +339,10 @@ bool DeleteDir(const std::string& filename, IfAbsentBehavior behavior)
 // renames file srcFilename to destFilename, returns true on success
 bool Rename(const std::string& srcFilename, const std::string& destFilename)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::Rename(srcFilename, destFilename);
+#endif
   DEBUG_LOG_FMT(COMMON, "{}: {} --> {}", __func__, srcFilename, destFilename);
   std::error_code error;
   std::filesystem::rename(StringToPath(srcFilename), StringToPath(destFilename), error);
@@ -344,6 +397,11 @@ bool CopyRegularFile(std::string_view source_path, std::string_view destination_
 {
   DEBUG_LOG_FMT(COMMON, "{}: {} --> {}", __func__, source_path, destination_path);
 
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::CopyRegularFile(source_path, destination_path);
+#endif
+
   auto src_path = StringToPath(source_path);
   auto dst_path = StringToPath(destination_path);
   std::error_code error;
@@ -359,12 +417,23 @@ bool CopyRegularFile(std::string_view source_path, std::string_view destination_
 // Returns the size of a file (or returns 0 if the path isn't a file that exists)
 u64 GetSize(const std::string& path)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::GetSize(path);
+#endif
   return FileInfo(path).GetSize();
 }
 
 // Overloaded GetSize, accepts FILE*
 u64 GetSize(FILE* f)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+  {
+    ERROR_LOG_FMT(COMMON, "GetSize: call using FILE when VFS is in use. This should not happen");
+    return 0;
+  }
+#endif
   // can't use off_t here because it can be 32-bit
   const u64 pos = ftello(f);
   if (fseeko(f, 0, SEEK_END) != 0)
@@ -388,6 +457,10 @@ bool CreateEmptyFile(const std::string& filename)
 {
   DEBUG_LOG_FMT(COMMON, "CreateEmptyFile: {}", filename);
 
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::CreateEmptyFile(filename);
+#endif
   if (!File::IOFile(filename, "wb"))
   {
     ERROR_LOG_FMT(COMMON, "CreateEmptyFile: failed {}: {}", filename, Common::LastStrerrorString());
@@ -439,6 +512,11 @@ static FSTEntry ScanDirectoryTreeAndroidContent(std::string directory, bool recu
 FSTEntry ScanDirectoryTree(std::string directory, bool recursive)
 {
   DEBUG_LOG_FMT(COMMON, "{}: directory {}", __func__, directory);
+
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::ScanDirectoryTree(directory, recursive);
+#endif
 
 #ifdef ANDROID
   if (IsPathAndroidContent(directory))
@@ -531,6 +609,11 @@ bool DeleteDirRecursively(const std::string& directory)
 {
   DEBUG_LOG_FMT(COMMON, "{}: {}", __func__, directory);
 
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::DeleteDir(directory, true);
+#endif
+
   std::error_code error;
   const std::uintmax_t num_removed = std::filesystem::remove_all(StringToPath(directory), error);
   const bool success = num_removed != static_cast<std::uintmax_t>(-1) && !error;
@@ -543,6 +626,11 @@ bool Copy(std::string_view source_path, std::string_view dest_path, bool overwri
 {
   DEBUG_LOG_FMT(COMMON, "{}: {} --> {} ({})", __func__, source_path, dest_path,
                 overwrite_existing ? "overwrite" : "preserve");
+
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::CopyRegularFile(source_path, dest_path, overwrite_existing);
+#endif
 
   auto src_path = StringToPath(source_path);
   auto dst_path = StringToPath(dest_path);
@@ -567,6 +655,11 @@ bool Copy(std::string_view source_path, std::string_view dest_path, bool overwri
 static bool MoveWithOverwrite(const std::filesystem::path& src, const std::filesystem::path& dst,
                               std::error_code& error)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::MoveWithOverwrite(src.string(), dst.string());
+#endif
+
   fs::rename(src, dst, error);
   if (!error)
     return true;
@@ -675,6 +768,10 @@ std::string CreateTempDir()
 
 std::string GetTempFilenameForAtomicWrite(std::string path)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return path + ".xxx";
+#endif
   std::error_code error;
   auto absolute_path = fs::absolute(StringToPath(path), error);
   if (!error)
@@ -1050,11 +1147,19 @@ std::string GetThemeDir(const std::string& theme_name)
 
 bool WriteStringToFile(const std::string& filename, std::string_view str)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::WriteStringToFile(filename, str);
+#endif
   return File::IOFile(filename, "wb").WriteBytes(str.data(), str.size());
 }
 
 bool ReadFileToString(const std::string& filename, std::string& str)
 {
+#ifdef __LIBRETRO__
+  if (Libretro::File::HasVFS())
+    return Libretro::File::ReadFileToString(filename, str);
+#endif
   File::IOFile file(filename, "rb");
 
   if (!file)

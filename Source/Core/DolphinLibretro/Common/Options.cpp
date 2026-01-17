@@ -366,6 +366,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::main_interface::ENABLE_LIBRETRO_VFS,
+    "Interface > Enable Virtual File System (VFS)",
+    "Enable Virtual File System (VFS)",
+    "Enable VFS for SAF/SMB etc.",
+    nullptr,
+    CATEGORY_INTERFACE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
 
   // ========== Main.DSP ==========
   {

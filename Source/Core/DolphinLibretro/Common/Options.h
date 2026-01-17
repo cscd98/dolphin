@@ -148,6 +148,7 @@ namespace main_interface {
   constexpr const char OSD_ENABLED[] = "dolphin_osd_enabled";
   constexpr const char LOG_LEVEL[] = "dolphin_log_level";
   constexpr const char ENABLE_DEBUGGING[] = "dolphin_debug_mode_enabled";
+  constexpr const char ENABLE_LIBRETRO_VFS[] = "dolphin_libretro_vfs_enabled";
 }  // namespace main_interface
 
 // ======================================================

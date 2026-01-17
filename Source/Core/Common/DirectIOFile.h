@@ -133,6 +133,15 @@ private:
 #endif
 
   u64 m_current_offset{};
+
+#ifdef __LIBRETRO__
+  retro_vfs_file_handle* m_vfs_handle = nullptr;
+  std::string m_path;
+  unsigned m_mode{};
+  unsigned m_hints{};
+
+  friend bool Resize(DirectIOFile& file, u64 size);
+#endif
 };
 
 // These take an open file handle to avoid failures from other processes trying to open our files.

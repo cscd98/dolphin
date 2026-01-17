@@ -417,6 +417,6 @@ if(MSVC)
 endif()
 
 if(LIBRETRO)
-  target_include_directories(common PRIVATE ${CMAKE_SOURCE_DIR}/Externals/Libretro/Include)
+  target_include_directories(common PRIVATE ${CMAKE_SOURCE_DIR}/Externals/libretro-common/include)
   target_link_libraries(common PRIVATE dolphin_libretro_videocontexts)
 endif()

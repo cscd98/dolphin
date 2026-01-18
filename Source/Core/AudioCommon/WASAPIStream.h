@@ -11,7 +11,7 @@
 #include <objbase.h>
 #ifdef __MINGW32__
 #include "Common/WILShim.h"
-#endi
+#endif
 #include <wil/resource.h>
 // clang-format on
 

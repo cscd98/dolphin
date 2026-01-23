@@ -32,19 +32,27 @@ void JitArmBlockCache::WriteLinkBlock(ArmGen::ARMXEmitter& emit,
 {
   const u8* start = emit.GetCodePtr();
 
-  static_cast<JitArm&>(m_jit).LogNumFromJIT("JitArmBlockCache::WriteLinkBlock - start is ",
-    static_cast<u32>(reinterpret_cast<uintptr_t>(start)));
+  bool usesafeB = false;
+  bool hasdest = dest != nullptr;
+  bool hascall = source.call;
+
+  //static_cast<JitArm&>(m_jit).LogNumFromJIT("JitArmBlockCache::WriteLinkBlock - start is ",
+  //  static_cast<u32>(reinterpret_cast<uintptr_t>(start)));
+
+  u32 temp = 0;
+  u32 temp2 = 0;
 
   if (!dest)
   {
     // No destination: set DISPATCHER_PC = exitAddress, then branch to dispatcher
-    emit.MOVI2R(DISPATCHER_PC, source.exitAddress);
+    // use optimize false to avoid too many instructions
+    emit.MOVI2R(DISPATCHER_PC, source.exitAddress, false);
 
-    static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - No dest: Updating DISPATCHER_PC with exitAddress:", source.exitAddress);
+    //static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - No dest: Updating DISPATCHER_PC with exitAddress:", source.exitAddress);
 
     if (source.call)
     {
-      static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - No dest: has source.call\n");
+      //static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - No dest: has source.call\n");
 
       if (emit.GetCodePtr() == start + BLOCK_LINK_FAST_BL_OFFSET - sizeof(u32))
         emit.NOP();
@@ -53,14 +61,16 @@ void JitArmBlockCache::WriteLinkBlock(ArmGen::ARMXEmitter& emit,
     }
     else
     {
+      temp = static_cast<u32>(reinterpret_cast<uintptr_t>(emit.GetCodePtr()));
       emit.B(m_jit.GetAsmRoutines()->dispatcher);
+      temp2 = static_cast<u32>(reinterpret_cast<uintptr_t>(emit.GetCodePtr()));
     }
   }
   else
   {
     if (source.call)
     {
-      static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - has source.call\n");
+     // static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - has source.call\n");
 
       // Call destination block directly, with farcode fallback
       if (emit.GetCodePtr() == start + BLOCK_LINK_FAST_BL_OFFSET - sizeof(u32))
@@ -68,22 +78,22 @@ void JitArmBlockCache::WriteLinkBlock(ArmGen::ARMXEmitter& emit,
       DEBUG_ASSERT(emit.GetCodePtr() == start + BLOCK_LINK_FAST_BL_OFFSET || emit.HasWriteFailed());
 
       // First branch to farcode stub
-      static_cast<JitArm&>(m_jit).LogNumFromJIT(
-        "WriteLinkBlock - Emitting branch to farcode",
-        static_cast<u32>(reinterpret_cast<uintptr_t>(source.exitFarcode)));
+      //static_cast<JitArm&>(m_jit).LogNumFromJIT(
+      //  "WriteLinkBlock - Emitting branch to farcode",
+      //  static_cast<u32>(reinterpret_cast<uintptr_t>(source.exitFarcode)));
 
       emit.B(source.exitFarcode);
 
       // Then emit the BL to the destination
-      static_cast<JitArm&>(m_jit).LogNumFromJIT(
-        "WriteLinkBlock - Emitting BL to dest normalEntry",
-        static_cast<u32>(reinterpret_cast<uintptr_t>(dest->normalEntry)));
+     // static_cast<JitArm&>(m_jit).LogNumFromJIT(
+      //  "WriteLinkBlock - Emitting BL to dest normalEntry",
+     //   static_cast<u32>(reinterpret_cast<uintptr_t>(dest->normalEntry)));
 
       emit.BL(dest->normalEntry);
     }
     else
     {
-      static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - no source.call\n");
+      //static_cast<JitArm&>(m_jit).LogNumFromJIT("WriteLinkBlock - no source.call\n");
 
       // Direct branch if within range, else fallback
       s64 block_distance = ((s64)dest->normalEntry - (s64)emit.GetCodePtr()) >> 2;
@@ -102,7 +112,8 @@ void JitArmBlockCache::WriteLinkBlock(ArmGen::ARMXEmitter& emit,
         }
         else
         {
-          static_cast<JitArm&>(m_jit).SafeB(source.exitFarcode);
+          usesafeB = true;
+          static_cast<JitArm&>(m_jit).SafeB(source.exitFarcode, false);
         }
       }
       else
@@ -116,17 +127,23 @@ void JitArmBlockCache::WriteLinkBlock(ArmGen::ARMXEmitter& emit,
 
     // Pad out to fixed size with BKPT
   const u8* end = start + BLOCK_LINK_SIZE;
-  static_cast<JitArm&>(m_jit).LogNumFromJIT(
-    "JitArmBlockCache::WriteLinkBlock - End of block is", static_cast<u32>(reinterpret_cast<uintptr_t>(end)));
+  //static_cast<JitArm&>(m_jit).LogNumFromJIT(
+  //  "JitArmBlockCache::WriteLinkBlock - End of block is", static_cast<u32>(reinterpret_cast<uintptr_t>(end)));
 
   // Use a fixed number of instructions so we have enough room for any patching needed later.
+  // Must match BLOCK_LINK_SIZE (currently 3 instructions).
+  int padded = 0;
+
   while (emit.GetCodePtr() < end)
   {
-    emit.BKPT(0xAB); // ARM32 filler (analogous to ARM64 BRK(101))
+    emit.BKPT(0xAB);
+    padded++;
     if (emit.HasWriteFailed())
       return;
   }
-  ASSERT(emit.GetCodePtr() == end);
+  ASSERT_MSG(DYNA_REC, emit.GetCodePtr() == end, "start {} emit.GetCodePtr() {} end {} BLOCK_LINK_SIZE {} padded {} safeB {} hasdest {} hascall {} temp {} temp2 {}",
+    reinterpret_cast<uintptr_t>(start), reinterpret_cast<uintptr_t>(emit.GetCodePtr()), reinterpret_cast<uintptr_t>(end), BLOCK_LINK_SIZE,
+    padded, usesafeB, hasdest, hascall, temp, temp2);
 }
 
 // Existing function now just sets up the emitter and calls the new helper

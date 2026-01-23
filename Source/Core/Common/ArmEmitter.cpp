@@ -326,9 +326,6 @@ void ARMXEmitter::SetCodePtrUnsafe(u8* ptr, u8* end, bool write_failed)
   m_code = ptr;
   m_code_end = end;
   m_write_failed = write_failed;
-
-  // mirrors old code (WEBOS TODO):
-  startcode = m_code;
 }
 
 void ARMXEmitter::SetCodePtr(u8* ptr, u8* end, bool write_failed)
@@ -344,7 +341,6 @@ void ARMXEmitter::SetCodePtr(u8 *ptr)
 	//printf("ARMXEmitter::SetCodePtr to %p\n", ptr);
 	//fflush(stdout);
   m_code = ptr;
-  startcode = m_code;
   m_lastCacheFlushEnd = ptr;
 }
 

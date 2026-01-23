@@ -199,7 +199,7 @@ public:
 	void SingleStep();
 
 	// Utilities for safer jumping > 32mb
-	void SafeB(const void* fnptr);
+	void SafeB(const void* fnptr, bool optimize = false);
 	void SafeSetJumpTarget(const ArmGen::FixupBranch& branch);
 
 	// Exits

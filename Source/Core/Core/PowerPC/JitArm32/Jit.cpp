@@ -531,7 +531,7 @@ void JitArm::MSRUpdated(ARMReg msr)
   STR(WA, PPC_REG, PPCSTATE_OFF(feature_flags));
 }
 
-void JitArm::SafeB(const void* fnptr)
+void JitArm::SafeB(const void* fnptr, bool optimize)
 {
   if (IsBranchInRange(fnptr, GetCodePtr()))
   {
@@ -540,7 +540,7 @@ void JitArm::SafeB(const void* fnptr)
   else
   {
     auto reg = gpr.GetScopedReg();
-    MOVI2R(reg, reinterpret_cast<u32>(fnptr));
+    MOVI2R(reg, reinterpret_cast<u32>(fnptr), optimize);
     BX(reg);
   }
 }

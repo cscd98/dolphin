@@ -91,7 +91,7 @@ ARMReg ArmFPRCache::GetReg(bool AutoLock)
 	}
 
 	// Uh Oh, we have all them locked....
-	ASSERT_MSG(DYNA_REC, false, "All available registers are locked dumb dumb");
+	ASSERT_MSG(DYNA_REC, false, "All available registers (FPRCache) are locked dumb dumb");
 	return D31;
 }
 void ArmFPRCache::Unlock(ARMReg V0)

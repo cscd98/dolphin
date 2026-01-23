@@ -138,9 +138,11 @@ void JitArm::GenerateAsm()
   MOVI2R(MEM_REG, (u32)m_system.GetMemory().GetPhysicalBase());
 
   // Store the stack pointer, so we can reset it if the BLR optimization fails.
-  auto tmp = gpr.GetScopedReg();
-  MOV(tmp, _SP);
-  STR(tmp, PPC_REG, PPCSTATE_OFF(stored_stack_pointer));
+  {
+	auto tmp = gpr.GetScopedReg();
+	MOV(tmp, _SP);
+	STR(tmp, PPC_REG, PPCSTATE_OFF(stored_stack_pointer));
+  }
 
   // The PC will be loaded into DISPATCHER_PC after the call to CoreTiming::Advance().
   // Advance() does an exception check so we don't know what PC to use until afterwards.
@@ -192,19 +194,19 @@ void JitArm::GenerateAsm()
   // ----------------------------------------------------------------------------
   dispatcher_no_check = GetCodePtr();
 
-	LogRegFromJIT("GenerateAsm(): dispatcher_no_check - DISPATCHER_PC is", DISPATCHER_PC);
+  LogRegFromJIT("GenerateAsm(): dispatcher_no_check - DISPATCHER_PC is", DISPATCHER_PC);
 
-	{
-		auto tmpStartUpPC = gpr.GetScopedReg();
-		LDR(tmpStartUpPC, PPC_REG, PPCSTATE_OFF(pc));
-		LogRegFromJIT("GenerateAsm(): dispatcher_no_check - PPCSTATE_OFF(pc)", tmpStartUpPC);
-	}
+  {
+	auto tmpStartUpPC = gpr.GetScopedReg();
+	LDR(tmpStartUpPC, PPC_REG, PPCSTATE_OFF(pc));
+	LogRegFromJIT("GenerateAsm(): dispatcher_no_check - PPCSTATE_OFF(pc)", tmpStartUpPC);
+  }
 
-	{
-		auto tmpStartUpPC = gpr.GetScopedReg();
-		LDR(tmpStartUpPC, PPC_REG, PPCSTATE_OFF(npc));
-		LogRegFromJIT("GenerateAsm(): dispatcher_no_check - PPCSTATE_OFF(npc)", tmpStartUpPC);
-	}
+  {
+	auto tmpStartUpPC = gpr.GetScopedReg();
+	LDR(tmpStartUpPC, PPC_REG, PPCSTATE_OFF(npc));
+	LogRegFromJIT("GenerateAsm(): dispatcher_no_check - PPCSTATE_OFF(npc)", tmpStartUpPC);
+ }
 
   // ============================================================================
   // Assembly Fast Path - Check block cache (uses DISPATCHER_PC, which is set after Advance)
@@ -218,8 +220,8 @@ void JitArm::GenerateAsm()
 
     if (entry_points)
     {
-			LogNumFromJIT("GenerateAsm(): entry_points",
-				static_cast<u32>(reinterpret_cast<uintptr_t>(entry_points)));
+		LogNumFromJIT("GenerateAsm(): entry_points",
+			static_cast<u32>(reinterpret_cast<uintptr_t>(entry_points)));
 
       // ====================================================================
       // FAST PATH: Entry Points Array (Direct PC -> Code Lookup)
@@ -267,8 +269,8 @@ void JitArm::GenerateAsm()
       // Contains pointers to JitBlock structures, not direct code pointers
       // We must verify PC and feature_flags match, then extract normalEntry
 
-			LogNumFromJIT("GenerateAsm(): fast_map_fallback",
-				static_cast<u32>(reinterpret_cast<uintptr_t>(fast_map_fallback)));
+	  LogNumFromJIT("GenerateAsm(): fast_map_fallback",
+	  static_cast<u32>(reinterpret_cast<uintptr_t>(fast_map_fallback)));
 
       // Register allocation:
       // R10 = fast_map_fallback base
@@ -317,7 +319,7 @@ void JitArm::GenerateAsm()
       FixupBranch null_entry = B_CC(CC_EQ);
 
       // Jump to compiled code
-			LogRegFromJIT("GenerateAsm(): Jumping to compiled block for", R6);
+	  LogRegFromJIT("GenerateAsm(): Jumping to compiled block for", R6);
       B(R14);
 
       // All failure paths lead to compilation
@@ -345,7 +347,7 @@ void JitArm::GenerateAsm()
   // Prepare arguments for JitArmTrampoline(JitBase& jit, u32 em_address)
   uintptr_t jit_ptr = reinterpret_cast<uintptr_t>(this);
 
-	LogRegFromJIT("GenerateAsm(): Calling trampoline with PC", DISPATCHER_PC);
+  LogRegFromJIT("GenerateAsm(): Calling trampoline with PC", DISPATCHER_PC);
 
   // Load arguments
   // R0 = &m_jit (pointer to JitBase object)
@@ -358,24 +360,24 @@ void JitArm::GenerateAsm()
   MOVI2R(R14, (u32)&JitArmTrampoline, false);
   BLX(R14);
 
-	{
-		auto tmp_pc = gpr.GetScopedReg();
-		LDR(tmp_pc, PPC_REG, PPCSTATE_OFF(pc));
-		LogRegFromJIT("WriteExceptionExit: PC immediately after CheckExceptions", tmp_pc);
-	}
+  {
+	auto tmp_pc = gpr.GetScopedReg();
+	LDR(tmp_pc, PPC_REG, PPCSTATE_OFF(pc));
+	LogRegFromJIT("WriteExceptionExit: PC immediately after CheckExceptions", tmp_pc);
+  }
 
-	{
-		auto tmp_pc = gpr.GetScopedReg();
-		LDR(tmp_pc, PPC_REG, PPCSTATE_OFF(npc));
-		LogRegFromJIT("WriteExceptionExit: NPC immediately after CheckExceptions", tmp_pc);
-	}
+  {
+	auto tmp_pc = gpr.GetScopedReg();
+	LDR(tmp_pc, PPC_REG, PPCSTATE_OFF(npc));
+	LogRegFromJIT("WriteExceptionExit: NPC immediately after CheckExceptions", tmp_pc);
+  }
 
-	LogRegFromJIT("GenerateAsm(): Returned from trampoline, dispatch pc is currently before reload", DISPATCHER_PC);
+  LogRegFromJIT("GenerateAsm(): Returned from trampoline, dispatch pc is currently before reload", DISPATCHER_PC);
 
   // After jitting, reload DISPATCHER_PC from PPCSTATE.pc and refresh membase
-	LDR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
+  LDR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
 
-	LogRegFromJIT("GenerateAsm(): Returned from trampoline, reloaded DISPATCHER_PC is", DISPATCHER_PC);
+  LogRegFromJIT("GenerateAsm(): Returned from trampoline, reloaded DISPATCHER_PC is", DISPATCHER_PC);
 
   EmitUpdateMembase();
 
@@ -394,14 +396,16 @@ void JitArm::GenerateAsm()
   STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
   STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(npc));
 
-	LogRegFromJIT("GenerateAsm(): Value at DISPATCHER_PC at Timing Slice End is", DISPATCHER_PC);
+  LogRegFromJIT("GenerateAsm(): Value at DISPATCHER_PC at Timing Slice End is", DISPATCHER_PC);
 
+  {
 	auto tmp2 = gpr.GetScopedReg();
 	LDR(tmp2, PPC_REG, PPCSTATE_OFF(pc));
 	LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(pc) after Timing Slice End is", tmp2);
 	auto tmp3 = gpr.GetScopedReg();
 	LDR(tmp3, PPC_REG, PPCSTATE_OFF(npc));
 	LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(npc) after Timing Slice End is", tmp3);
+  }
 
   // ----------------------------------------------------------------------------
   // CPU State Check - Exit if not running
@@ -426,11 +430,13 @@ void JitArm::GenerateAsm()
   // Load the PC back into DISPATCHER_PC (the exception handler might have changed it)
   LDR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
 
-	LogRegFromJIT("GenerateAsm(): Value at DISPATCHER_PC after GlobalAdvance is", DISPATCHER_PC);
+  LogRegFromJIT("GenerateAsm(): Value at DISPATCHER_PC after GlobalAdvance is", DISPATCHER_PC);
 
+  {
 	auto tmp4 = gpr.GetScopedReg();
 	LDR(tmp4, PPC_REG, PPCSTATE_OFF(pc));
 	LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(pc) after GlobalAdvance is", tmp4);
+  }
 
   // We can safely assume that downcount >= 1
   B(dispatcher_no_check);
@@ -446,12 +452,14 @@ void JitArm::GenerateAsm()
     STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
     STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(npc));
 
-		auto tmp5 = gpr.GetScopedReg();
-		LDR(tmp5, PPC_REG, PPCSTATE_OFF(pc));
-		LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(pc) after Exit path is", tmp5);
-		auto tmp6 = gpr.GetScopedReg();
-		LDR(tmp6, PPC_REG, PPCSTATE_OFF(npc));
-		LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(npc) after Exit path is", tmp6);
+	{
+	  auto tmp5 = gpr.GetScopedReg();
+	  LDR(tmp5, PPC_REG, PPCSTATE_OFF(pc));
+	  LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(pc) after Exit path is", tmp5);
+	  auto tmp6 = gpr.GetScopedReg();
+	  LDR(tmp6, PPC_REG, PPCSTATE_OFF(npc));
+	  LogRegFromJIT("GenerateAsm(): Value at PPCSTATE_OFF(npc) after Exit path is", tmp6);
+	}
   }
 
   // Restore stack alignment

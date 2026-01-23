@@ -350,8 +350,7 @@ private:
 	// Must be cleared with SetCodePtr() afterwards.
 	bool m_write_failed = false;
 
-	u8 *startcode;
-	u32 condition;
+	u32 condition{static_cast<u32>(CC_AL) << 28};
 	std::vector<LiteralPool> currentLitPool;
 
 	void WriteStoreOp(u32 Op, ARMReg Rt, ARMReg Rn, Operand2 op2, bool RegAdd);
@@ -371,20 +370,12 @@ protected:
   void Write32(u32 value);
 
 public:
-	ARMXEmitter() : m_code(nullptr), m_lastCacheFlushEnd(nullptr), startcode(nullptr) {
-		condition = CC_AL << 28;
+	ARMXEmitter() = default;
+	ARMXEmitter(u8* code, u8* code_end)
+		: m_code(code), m_code_end(code_end), m_lastCacheFlushEnd(code)
+	{
 	}
 
-	ARMXEmitter(u8* code, u8* code_end)
-		: m_code(code), m_code_end(code_end)
-		, m_lastCacheFlushEnd(code)
-	{
-		m_code = code;
-		m_code_end = code_end;
-		m_lastCacheFlushEnd = code;
-		startcode = code;
-		condition = CC_AL << 28;
-	}
 	virtual ~ARMXEmitter() {}
 
 	void SetCodePtr(u8 *ptr);

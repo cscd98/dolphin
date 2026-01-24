@@ -317,9 +317,7 @@ u32 JitArm::EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, MemAccessMode mod
 	const bool emit_fast_access = mode != MemAccessMode::AlwaysSlowAccess;
 	const bool emit_slow_access = mode != MemAccessMode::AlwaysFastAccess;
 
-	printf("JIT ARM32 Emitting backpatch routine (fastmem=%d, flags=0x%08x, RS=%d, V1=%d)\n",
-		emit_fast_access ? 1 : 0, flags, RS, V1);
-	fflush(stdout);
+	LogNumFromJIT("JIT ARM32 Emitting backpatch routines");
 
 	ARMReg addr = R12;
 	ARMReg temp = R11;
@@ -565,9 +563,7 @@ u32 JitArm::EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, MemAccessMode mod
 		emit->NOP(num_insts_max - code_size);
 	}
 
-	printf("membase r8=0x%08x\n", R8);
-	printf("Finished EmitBackpatchRoutine\n");
-	fflush(stdout);
+	LogRegFromJIT("Finished EmitBackpatchRoutine: R8=", R8);
 
 	return trouble_offset;
 }

@@ -29,8 +29,8 @@ public:
     const JitBlock::LinkData& source,
     const JitBlock* dest = nullptr);
 
-  // SafeB might increase to 6? instructions
-  static constexpr size_t BLOCK_LINK_SIZE = 3 * sizeof(u32);
+  static constexpr size_t BLOCK_LINK_SIZE_MULTIPLIER = 3;
+  static constexpr size_t BLOCK_LINK_SIZE = BLOCK_LINK_SIZE_MULTIPLIER * sizeof(u32);
   static constexpr size_t BLOCK_LINK_FAST_BL_OFFSET = BLOCK_LINK_SIZE - sizeof(u32);
 
 private:

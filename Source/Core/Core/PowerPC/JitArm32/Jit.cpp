@@ -760,7 +760,24 @@ void JitArm::FakeLKExit(u32 exit_address_after_return, ArmGen::ARMReg exit_addre
     ORR(key, static_cast<ARMReg>(tmp), Operand2(feature_flags << 30));
   }
 
-  // Push {retaddr, key} onto the stack (pair store). Order matches ARM64 STP.
+  // FIX: Push {retaddr, key} onto the stack (pair store). Order matches ARM64 STP.
+  // The issue was that we were pushing these values but the emulated code was expecting
+  // the PPC return address to be in LR, not on the host stack.
+  // Instead, we should write the PPC return address to the PPC LR register.
+
+  // Store exit_address_after_return to PPC LR
+  /*auto lr_tmp = gpr.GetScopedReg();
+  if (exit_address_after_return_reg == ArmGen::INVALID_REG)
+  {
+    MOVI2R(lr_tmp, exit_address_after_return);
+  }
+  else
+  {
+    MOV(lr_tmp, exit_address_after_return_reg);
+  }
+  STR(lr_tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));*/
+
+  // Now push host return info for BLR optimization
   PUSH(2, retaddr, key);
 
   // Call dispatcher (materialize address, use BLX)

@@ -253,7 +253,7 @@ void JitArm::arith(UGeckoInstruction inst)
 			Imm[1] = inst.SIMM_16;
 			carry = true;
 		break;
-		case 15: // addis
+		/*case 15: // addis
 			shiftedImm = true;
 		case 14: // addi
 			if (a)
@@ -271,7 +271,14 @@ void JitArm::arith(UGeckoInstruction inst)
 			}
 			isImm[1] = true;
 			Imm[1] = inst.SIMM_16 << (shiftedImm ? 16 : 0);
-		break;
+			if (d == 1 || a == 1) { // Stack pointer logging
+				LogNumFromJIT("addi/addis stack op - d", d);
+				LogNumFromJIT("addi/addis stack op - a", a);
+				LogNumFromJIT("addi/addis stack op - input", isImm[0] ? Imm[0] : 0xDEADBEEF);
+				LogNumFromJIT("addi/addis stack op - offset", Imm[1]);
+				LogNumFromJIT("addi/addis stack op - result", isImm[0] ? Add(Imm[0], Imm[1]) : 0xCAFEBABE);
+			}
+		break;*/
 		case 25: // oris
 			shiftedImm = true;
 		case 24: // ori
@@ -375,11 +382,11 @@ void JitArm::arith(UGeckoInstruction inst)
 				gpr.SetImmediate(d, Add(Imm[0], Imm[1]));
 				hasCarry = Interpreter::Helper_Carry(Imm[0], Imm[1]);
 			break;
-			case 14:
+			/*case 14:
 			case 15:
 				gpr.SetImmediate(d, Add(Imm[0], Imm[1]));
 				hasCarry = Interpreter::Helper_Carry(Imm[0], Imm[1]);
-			break;
+			break;*/
 			case 24:
 			case 25:
 				gpr.SetImmediate(a, Or(Imm[0], Imm[1] << (shiftedImm ? 16 : 0)));
@@ -503,7 +510,7 @@ void JitArm::arith(UGeckoInstruction inst)
 			}
 		}
 		break;
-		case 14:
+		/*case 14:
 		case 15: // Arg2 is always Imm
 			if (!isImm[0])
 			{
@@ -527,7 +534,7 @@ void JitArm::arith(UGeckoInstruction inst)
 			{
 				gpr.SetImmediate(d, Imm[1]);
 			}
-		break;
+		break;*/
 		case 24:
 		case 25:
 		{
@@ -722,6 +729,42 @@ void JitArm::arith(UGeckoInstruction inst)
 		ComputeRC(gpr.R(dest));
 }
 
+void JitArm::addix(UGeckoInstruction inst)
+{
+  INSTRUCTION_START
+  JITDISABLE(bJITIntegerOff);
+
+  u32 d = inst.RD;
+  u32 a = inst.RA;
+
+  u32 imm = static_cast<u32>(static_cast<s32>(inst.SIMM_16));
+  if (inst.OPCD == 15)  // addis
+    imm <<= 16;
+
+  if (a)
+  {
+    gpr.BindToRegister(d, d == a);
+    ARMReg RD = gpr.R(d);
+    ARMReg RA = gpr.R(a);
+
+    if (imm < 256)
+    {
+      ADD(RD, RA, imm);  // small immediate fits directly
+    }
+    else
+    {
+      auto tmp = gpr.GetScopedReg();
+      MOVI2R(tmp, imm);  // load imm into scratch
+      ADD(RD, RA, static_cast<ARMReg>(tmp));
+    }
+  }
+  else
+  {
+    // a == 0, implies zero register
+    gpr.SetImmediate(d, imm);
+  }
+}
+
 void JitArm::addex(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
@@ -910,7 +953,7 @@ void JitArm::cmpi(UGeckoInstruction inst)
 	gpr.Unlock(rA);
 }
 
-void JitArm::cmpli(UGeckoInstruction inst)
+/*void JitArm::cmpli(UGeckoInstruction inst)
 {
 	INSTRUCTION_START
 	JITDISABLE(bJITIntegerOff);
@@ -930,6 +973,40 @@ void JitArm::cmpli(UGeckoInstruction inst)
 	}
 
 	FALLBACK_IF(true);
+}*/
+
+void JitArm::cmpli(UGeckoInstruction inst)
+{
+    INSTRUCTION_START
+    JITDISABLE(bJITIntegerOff);
+
+    u32 a = inst.RA;
+    int crf = inst.CRFD;
+    u32 uimm = inst.UIMM;
+
+    if (gpr.IsImm(a))
+    {
+        ComputeRC(gpr.GetImm(a) - uimm, crf);
+        return;
+    }
+
+    ARMReg RA = gpr.R(a);
+
+    if (uimm == 0)
+    {
+        ComputeRC(RA, crf);
+        return;
+    }
+
+    // Compare with immediate
+    auto rB = gpr.GetScopedReg();
+    MOVI2R(rB, uimm);
+
+    // Subtract for comparison (sets flags)
+    SUBS(rB, RA, static_cast<ARMReg>(rB));
+
+    // Now compute CR field based on flags
+    ComputeRC(rB, crf);
 }
 
 void JitArm::negx(UGeckoInstruction inst)

@@ -270,6 +270,7 @@ public:
 	// Integer
 	void arith(UGeckoInstruction _inst);
 
+	void addix(UGeckoInstruction inst);
 	void addex(UGeckoInstruction _inst);
 	void subfic(UGeckoInstruction _inst);
 	void cntlzwx(UGeckoInstruction _inst);

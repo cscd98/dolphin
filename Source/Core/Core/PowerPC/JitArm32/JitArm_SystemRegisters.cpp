@@ -18,41 +18,43 @@ using namespace ArmGen;
 
 FixupBranch JitArm::JumpIfCRFieldBit(int field, int bit, bool jump_if_set)
 {
-	auto RA = gpr.GetScopedReg();
+  auto RA = gpr.GetScopedReg();
 
-	Operand2 SOBit(2, 2); // 0x10000000
-	Operand2 LTBit(1, 1); // 0x80000000
+  FixupBranch branch;
+  switch (bit)
+  {
+  case PowerPC::CR_SO_BIT:  // check summary overflow bit
+    // SO is stored in the high word, so load +4
+    LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field) + 4);
+    TST(RA, IMM(1u << (PowerPC::CR_EMU_SO_BIT - 32)));
+    branch = B_CC(jump_if_set ? CC_NEQ : CC_EQ);
+    break;
 
-	FixupBranch branch;
-	switch (bit)
-	{
-	case PowerPC::CR_SO_BIT:  // check bit 61 set
-		LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field) + static_cast<s32>(sizeof(u32)));
-		TST(RA, SOBit);
-		branch = B_CC(jump_if_set ? CC_NEQ : CC_EQ);
-	break;
-	case PowerPC::CR_EQ_BIT:  // check bits 31-0 == 0
-		LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field));
-		CMP(RA, 0);
-		branch = B_CC(jump_if_set ? CC_EQ : CC_NEQ);
-	break;
-	case PowerPC::CR_GT_BIT:  // check val > 0
-		LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field));
-		CMP(RA, 1);
-		LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field) + static_cast<s32>(sizeof(u32)));
-		SBCS(RA, RA, 0);
-		branch = B_CC(jump_if_set ? CC_GE : CC_LT);
-	break;
-	case PowerPC::CR_LT_BIT:  // check bit 62 set
-		LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field) + static_cast<s32>(sizeof(u32)));
-		TST(RA, LTBit);
-		branch = B_CC(jump_if_set ? CC_NEQ : CC_EQ);
-	break;
-	default:
-		ASSERT_MSG(DYNA_REC, false, "Invalid CR bit");
-	}
+  case PowerPC::CR_EQ_BIT:  // check if field == 0
+    LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field));
+    CMP(RA, 0);
+    branch = B_CC(jump_if_set ? CC_EQ : CC_NEQ);
+    break;
 
-	return branch;
+  case PowerPC::CR_GT_BIT:  // check val > 0
+    LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field));
+    CMP(RA, 0);
+    branch = B_CC(jump_if_set ? CC_GT : CC_LE);
+    break;
+
+  case PowerPC::CR_LT_BIT:  // check less-than bit
+    // LT is stored in the high word, so load +4
+    LDR(RA, PPC_REG, PPCSTATE_OFF_CR(field) + 4);
+    TST(RA, IMM(1u << (PowerPC::CR_EMU_LT_BIT - 32)));
+    branch = B_CC(jump_if_set ? CC_NEQ : CC_EQ);
+    break;
+
+  default:
+    ASSERT_MSG(DYNA_REC, false, "Invalid CR bit");
+    break;
+  }
+
+  return branch;
 }
 
 void JitArm::mtspr(UGeckoInstruction inst)
@@ -146,8 +148,6 @@ void JitArm::mtspr(UGeckoInstruction inst)
     LogRegFromJIT("mtspr -> CTR masked for bcctrx", masked);
   }
 }
-
-
 
 void JitArm::mftb(UGeckoInstruction inst)
 {

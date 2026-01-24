@@ -33,8 +33,11 @@ constexpr std::array<JitArmOpTemplate, 54> s_primary_table{{
 	{11, &JitArm::cmpi},                  // cmpi
 	{12, &JitArm::arith},                 // addic
 	{13, &JitArm::arith},                 // addic_rc
-	{14, &JitArm::arith},                 // addi
-	{15, &JitArm::arith},                 // addis
+
+	{14, &JitArm::addix},  			  	  // addi
+    {15, &JitArm::addix},                 // addis
+	//{14, &JitArm::arith},                 // addi
+	//{15, &JitArm::arith},                 // addis
 
 	{20, &JitArm::rlwimix},               // rlwimix
 	{21, &JitArm::rlwinmx},               // rlwinmx

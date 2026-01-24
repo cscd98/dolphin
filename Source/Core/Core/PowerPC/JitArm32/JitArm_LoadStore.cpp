@@ -462,11 +462,8 @@ void JitArm::lXX(UGeckoInstruction inst)
   INSTRUCTION_START
   JITDISABLE(bJITLoadStoreOff);
 
-  const u32 a = inst.RA;
-  const u32 b = inst.RB;
-  const u32 d = inst.RD;
-  const s32 offset = inst.SIMM_16;
-
+  u32 a = inst.RA, b = inst.RB, d = inst.RD;
+  s32 offset = inst.SIMM_16;
   s32 offsetReg = -1;
   u32 flags = BackPatchInfo::FLAG_LOAD;
   bool update = false;
@@ -474,7 +471,7 @@ void JitArm::lXX(UGeckoInstruction inst)
   switch (inst.OPCD)
   {
   case 31:
-    offsetReg = static_cast<s32>(b);
+    offsetReg = b;
     switch (inst.SUBOP10)
     {
     case 55:  // lwzux
@@ -483,59 +480,50 @@ void JitArm::lXX(UGeckoInstruction inst)
     case 23:  // lwzx
       flags |= BackPatchInfo::FLAG_SIZE_32;
       break;
-
     case 119:  // lbzux
       update = true;
       [[fallthrough]];
-    case 87:   // lbzx
+    case 87:  // lbzx
       flags |= BackPatchInfo::FLAG_SIZE_8;
       break;
-
     case 311:  // lhzux
       update = true;
       [[fallthrough]];
     case 279:  // lhzx
       flags |= BackPatchInfo::FLAG_SIZE_16;
       break;
-
     case 375:  // lhaux
       update = true;
       [[fallthrough]];
     case 343:  // lhax
       flags |= BackPatchInfo::FLAG_EXTEND | BackPatchInfo::FLAG_SIZE_16;
       break;
-
     case 534:  // lwbrx
       flags |= BackPatchInfo::FLAG_REVERSE | BackPatchInfo::FLAG_SIZE_32;
       break;
-
     case 790:  // lhbrx
       flags |= BackPatchInfo::FLAG_REVERSE | BackPatchInfo::FLAG_SIZE_16;
       break;
     }
     break;
-
   case 33:  // lwzu
     update = true;
     [[fallthrough]];
   case 32:  // lwz
     flags |= BackPatchInfo::FLAG_SIZE_32;
     break;
-
   case 35:  // lbzu
     update = true;
     [[fallthrough]];
   case 34:  // lbz
     flags |= BackPatchInfo::FLAG_SIZE_8;
     break;
-
   case 41:  // lhzu
     update = true;
     [[fallthrough]];
   case 40:  // lhz
     flags |= BackPatchInfo::FLAG_SIZE_16;
     break;
-
   case 43:  // lhau
     update = true;
     [[fallthrough]];
@@ -557,26 +545,27 @@ void JitArm::lXX(UGeckoInstruction inst)
     accessSize = 32;
 
   // Exception check before loading.
-  ARMReg rA = gpr.GetReg(false);
-  ARMReg RD = gpr.R(d);
+  {
+    //ARMReg rA = gpr.GetReg(false);
+    ARMReg RD = gpr.R(d);
 
-  LDR(rA, PPC_REG, PPCSTATE_OFF(Exceptions));
-  TST(rA, EXCEPTION_DSI);
-  FixupBranch DoNotLoad = B_CC(CC_NEQ);
+    //LDR(rA, PPC_REG, PPCSTATE_OFF(Exceptions));
+    //TST(rA, EXCEPTION_DSI);
+    //FixupBranch DoNotLoad = B_CC(CC_NEQ);
 
-  SafeLoadToReg(RD, update ? static_cast<s32>(a) : (a ? static_cast<s32>(a) : -1),
-                offsetReg, accessSize, offset, signExtend, reverse, update);
+    SafeLoadToReg(RD, update ? a : (a ? a : -1),
+                  offsetReg, accessSize, offset, signExtend, reverse, update);
 
-  SetJumpTarget(DoNotLoad);
+    //SetJumpTarget(DoNotLoad);
+  }
 
   // We branched here because Exceptions had EXCEPTION_DSI set.
   // Log the fact that we skipped the SafeLoadToReg.
-  ARMReg tmp = gpr.GetReg(false);
-  LDR(tmp, PPC_REG, PPCSTATE_OFF(Exceptions));
-  LogNumFromJIT("Skipped SafeLoadToReg due to exception, Exceptions=", tmp);
-
-
-  Core::CPUThreadGuard guard(m_system);
+  {
+    //ARMReg tmp = gpr.GetReg(false);
+    //LDR(tmp, PPC_REG, PPCSTATE_OFF(Exceptions));
+    //LogNumFromJIT("Skipped SafeLoadToReg due to exception, Exceptions=", tmp);
+  }
 }
 
 // Some games use this heavily in video codecs

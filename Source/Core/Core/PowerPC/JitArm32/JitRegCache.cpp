@@ -207,7 +207,7 @@ ARMReg ArmRegCache::R(u32 preg)
 
 		regs[preg].LoadToReg(regindex);
 
-		//printf("ArmRegCache::R() returning ARM reg index 0x%08x\n", ArmCRegs[index].Reg);
+		printf("ArmRegCache::R() returning ARM reg index 0x%08x\n", ArmCRegs[regindex].Reg);
 
 		return ArmCRegs[regindex].Reg;
 	}

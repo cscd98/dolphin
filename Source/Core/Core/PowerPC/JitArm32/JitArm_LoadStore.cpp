@@ -21,6 +21,12 @@ using namespace ArmGen;
 
 void JitArm::SafeStoreFromReg(s32 dest, u32 value, s32 regOffset, int accessSize, s32 offset)
 {
+  LogNumFromJIT("SafeStoreFromReg: dest", dest);
+  LogNumFromJIT("SafeStoreFromReg: value", value);
+  LogNumFromJIT("SafeStoreFromReg: regOffset", regOffset);
+  LogNumFromJIT("SafeStoreFromReg: accessSize", accessSize);
+  LogNumFromJIT("SafeStoreFromReg: offset", offset);
+
   // Reserve scratch: R12 as address, R10/R11 as temporaries for gather-pipe.
   // Ensure your reg cache never hands out R12/R10/R11 concurrently in this emission path.
   ARMReg addr_reg = R12;
@@ -331,6 +337,12 @@ void JitArm::SafeLoadToReg(ARMReg dest, s32 addr, s32 offsetReg, int accessSize,
   LogNumFromJIT("SafeLoadToReg offsetReg", offsetReg);
   LogNumFromJIT("SafeLoadToReg accessSize", accessSize);
   LogNumFromJIT("SafeLoadToReg offset", offset);
+
+  if (addr != -1 && !gpr.IsImm(addr))
+    gpr.BindToRegister(addr, true);
+
+  if (offsetReg != -1 && !gpr.IsImm(offsetReg))
+    gpr.BindToRegister(offsetReg, true);
 
 	// We want to make sure to not get LR as a temp register
 	ARMReg rA = R12;

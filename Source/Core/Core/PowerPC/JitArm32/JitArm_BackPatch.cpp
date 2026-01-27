@@ -291,8 +291,8 @@ bool JitArm::BackPatch(SContext* ctx)
 	fflush(stdout);
 
 	// Create emitter at the start of the sequence
-  ARMXEmitter emitter;
-  emitter.SetCodePtrUnsafe(sequence_start, sequence_start + (info.m_fastmem_size * 4), false);
+	ARMXEmitter emitter;
+	emitter.SetCodePtrUnsafe(sequence_start, sequence_start + (info.m_fastmem_size * 4), false);
 
 	// Generate slowmem code (no fastmem this time)
 	EmitBackpatchRoutine(&emitter, flags, MemAccessMode::AlwaysSlowAccess, true, rD, V1);
@@ -317,12 +317,14 @@ u32 JitArm::EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, MemAccessMode mod
 	const bool emit_fast_access = mode != MemAccessMode::AlwaysSlowAccess;
 	const bool emit_slow_access = mode != MemAccessMode::AlwaysFastAccess;
 
-	LogNumFromJIT("JIT ARM32 Emitting backpatch routines");
+	LogRegFromJIT("JIT ARM32 Emitting backpatch routines: RS is", RS);
 
-	ARMReg addr = R12;
+	ARMReg addr = (RS == R12) ? R10 : R12; // R12 is used by SafeLoadToReg?
 	ARMReg temp = R11;
 	u32 trouble_offset = 0;
 	const u8* code_base = emit->GetCodePtr();
+
+	LogRegFromJIT("JIT ARM32 Emitting backpatch routines: addr is", addr);
 
 	if (emit_fast_access)
 	{
@@ -448,6 +450,8 @@ u32 JitArm::EmitBackpatchRoutine(ARMXEmitter* emit, u32 flags, MemAccessMode mod
 	}
 	else
 	{
+		//LogRegFromJIT("Slow store _LR is currently:", _LR);
+
 		// Slow access path - unchanged from your original
 		if (flags & BackPatchInfo::FLAG_STORE &&
 		    flags & (BackPatchInfo::FLAG_SIZE_32 | BackPatchInfo::FLAG_SIZE_64))

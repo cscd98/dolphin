@@ -323,8 +323,15 @@ void JitArm::stX(UGeckoInstruction inst)
   }
 }
 
-void JitArm::SafeLoadToReg(ARMReg dest, s32 addr, s32 offsetReg, int accessSize, s32 offset, bool signExtend, bool reverse, bool update)
+void JitArm::SafeLoadToReg(ARMReg dest, s32 addr, s32 offsetReg, int accessSize, s32 offset,
+  bool signExtend, bool reverse, bool update)
 {
+  LogRegFromJIT("SafeLoadToReg dest", dest);
+  LogNumFromJIT("SafeLoadToReg addr", addr);
+  LogNumFromJIT("SafeLoadToReg offsetReg", offsetReg);
+  LogNumFromJIT("SafeLoadToReg accessSize", accessSize);
+  LogNumFromJIT("SafeLoadToReg offset", offset);
+
 	// We want to make sure to not get LR as a temp register
 	ARMReg rA = R12;
 
@@ -461,6 +468,12 @@ void JitArm::lXX(UGeckoInstruction inst)
 {
   INSTRUCTION_START
   JITDISABLE(bJITLoadStoreOff);
+
+  /*{
+    auto tmp = gpr.GetScopedReg();
+    LDR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+	  LogRegFromJIT("lXX: LR at start is:", tmp);
+  }*/
 
   u32 a = inst.RA, b = inst.RB, d = inst.RD;
   s32 offset = inst.SIMM_16;

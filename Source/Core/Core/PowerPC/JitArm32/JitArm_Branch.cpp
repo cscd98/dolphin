@@ -137,7 +137,6 @@ void JitArm::rfi(UGeckoInstruction inst)
   WriteRfiExitDestInR(static_cast<ARMReg>(WA));
 }
 
-
 void JitArm::bx(UGeckoInstruction inst)
 {
   INSTRUCTION_START;
@@ -362,6 +361,12 @@ void JitArm::bclrx(UGeckoInstruction inst)
 {
   LogNumFromJIT("bclrx: current compiler.PC", js.compilerPC);
 
+  {
+    auto tmp = gpr.GetScopedReg();
+    LDR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    LogRegFromJIT("bclrx: LR at start is:", tmp);
+  }
+
   INSTRUCTION_START;
   JITDISABLE(bJITBranchOff);
 
@@ -380,13 +385,11 @@ void JitArm::bclrx(UGeckoInstruction inst)
     FixupBranch pCTRDontBranch;
     if ((inst.BO & BO_DONT_DECREMENT_FLAG) == 0)  // Decrement and test CTR
     {
-      LogNumFromJIT("bclrx: ctest CTR");
-
       LDR(WA, PPC_REG, PPCSTATE_OFF_SPR(SPR_CTR));
       SUBS(WA, WA, 1);
       STR(WA, PPC_REG, PPCSTATE_OFF_SPR(SPR_CTR));
 
-      LogRegFromJIT("bclrx: updated CTR", WA);
+      LogRegFromJIT("bclrx: updated CTR - WA is now", WA);
       pCTRDontBranch = B_CC((inst.BO & BO_BRANCH_IF_CTR_0) ? CC_NEQ : CC_EQ);
     }
 
@@ -421,17 +424,25 @@ void JitArm::bclrx(UGeckoInstruction inst)
       LogNumFromJIT("bclrx: wrote LR (link)", js.compilerPC + 4);
     }
 
+    LogRegFromJIT("bclrx: WA before flush: ", WA);
+
     // Flush for exit emission
     gpr.Flush(conditional ? FLUSH_MAINTAIN_STATE : FLUSH_ALL);
     fpr.Flush(conditional ? FLUSH_MAINTAIN_STATE : FLUSH_ALL);
 
+    LogRegFromJIT("bclrx: WA after flush: ", WA);
+
     if (js.op->branchIsIdleLoop)
     {
+      LogRegFromJIT("bclrx: WA before ABI_PushCalleeGPRsAndAdjustStack: ", WA);
+
       ABI_PushCalleeGPRsAndAdjustStack(true);
 
-      auto X = gpr.GetScopedReg();
-      MOVI2R(X, reinterpret_cast<u32>(&CoreTiming::GlobalIdle));
-      BLX(X);
+      {
+        auto X = gpr.GetScopedReg();
+        MOVI2R(X, reinterpret_cast<u32>(&CoreTiming::GlobalIdle));
+        BLX(X);
+      }
 
       ABI_PopCalleeGPRsAndAdjustStack(true);
 
@@ -443,9 +454,10 @@ void JitArm::bclrx(UGeckoInstruction inst)
       {
         auto tmp = gpr.GetScopedReg();
         LDR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
-        LogRegFromJIT("bclrx: LR is:", tmp);
-        LogRegFromJIT("bclrx: exiting via WA: ", WA);
+        LogRegFromJIT("bclrx: LR now is:", tmp);
       }
+
+      LogRegFromJIT("bclrx: exiting via WA: ", WA);
       WriteBLRExit(WA);  // ensure this exits via WA (BX WA), not via LR
     }
 
@@ -496,46 +508,45 @@ static const char* MakeLogMsg(const char* base, ArmGen::ARMReg reg)
   return s;
 }
 
+// FIXED logging functions that don't corrupt the stack
 void JitArm::LogRegFromJIT(const char* msg, ArmGen::ARMReg reg)
 {
-  // Save caller state
+  // Save all caller-saved registers + LR
+  // ARM calling convention: R0-R3, R12, LR are caller-saved
+  // We also need to save R4-R11 if we're using them (callee-saved)
+  // PPC_REG (R9) must be preserved!
+
+  // Push registers in pairs for proper alignment (ARM requires 8-byte stack alignment)
+  // Total: 14 registers = 56 bytes
   PUSH(14, ArmGen::R0, ArmGen::R1, ArmGen::R2, ArmGen::R3,
            ArmGen::R4, ArmGen::R5, ArmGen::R6, ArmGen::R7,
            ArmGen::R8, PPC_REG, ArmGen::R10, ArmGen::R11,
            ArmGen::R12, ArmGen::_LR);
 
+  // Stack is now automatically 8-byte aligned after PUSH (56 bytes)
+  // NO need to adjust SP further!
+
   const char* m = MakeLogMsg(msg, reg);
   MOVI2R(ArmGen::R0, static_cast<u32>(reinterpret_cast<uintptr_t>(m)));
-
-  // Ensure 8-byte stack alignment for the BL
-  SUB(ArmGen::_SP, ArmGen::_SP, 4);
 
   if (reg == ArmGen::INVALID_REG)
   {
     MOVI2R(ArmGen::R1, LOG_SENTINEL);
-    QuickCallFunction(ArmGen::R12, reinterpret_cast<void*>(&LogRegHelper));
   }
   else if (reg == ArmGen::R12)
   {
-    // Spill R12 while using it as call-scratch
-    SUB(ArmGen::_SP, ArmGen::_SP, 4);
-    STR(ArmGen::R12, ArmGen::_SP, 0);
-
-    MOV(ArmGen::R1, ArmGen::R12);
-    QuickCallFunction(ArmGen::R12, reinterpret_cast<void*>(&LogRegHelper));
-
-    LDR(ArmGen::R12, ArmGen::_SP, 0);
-    ADD(ArmGen::_SP, ArmGen::_SP, 4);
+    // R12 is already saved on stack, but we need its value
+    // It's at offset: 13 registers down from top = 52 bytes
+    LDR(ArmGen::R1, ArmGen::_SP, 52);  // Load saved R12
   }
   else
   {
     MOV(ArmGen::R1, reg);
-    QuickCallFunction(ArmGen::R12, reinterpret_cast<void*>(&LogRegHelper));
   }
 
-  // Undo the alignment pad
-  ADD(ArmGen::_SP, ArmGen::_SP, 4);
+  QuickCallFunction(ArmGen::R12, reinterpret_cast<void*>(&LogRegHelper));
 
+  // Restore all registers
   POP(14, ArmGen::R0, ArmGen::R1, ArmGen::R2, ArmGen::R3,
           ArmGen::R4, ArmGen::R5, ArmGen::R6, ArmGen::R7,
           ArmGen::R8, PPC_REG, ArmGen::R10, ArmGen::R11,
@@ -544,12 +555,14 @@ void JitArm::LogRegFromJIT(const char* msg, ArmGen::ARMReg reg)
 
 void JitArm::LogNumFromJIT(const char* msg, u32 value)
 {
+  // Same register save pattern
   PUSH(14, ArmGen::R0, ArmGen::R1, ArmGen::R2, ArmGen::R3,
            ArmGen::R4, ArmGen::R5, ArmGen::R6, ArmGen::R7,
            ArmGen::R8, PPC_REG, ArmGen::R10, ArmGen::R11,
            ArmGen::R12, ArmGen::_LR);
 
-  // Pre-bake the message on the host (emission-time), pass pointer to helper
+  // Stack is 8-byte aligned after pushing 14 registers (56 bytes)
+
   size_t len = std::strlen(msg);
   char* m = static_cast<char*>(std::malloc(len + 1));
   if (m)
@@ -560,13 +573,11 @@ void JitArm::LogNumFromJIT(const char* msg, u32 value)
   MOVI2R(ArmGen::R0, static_cast<u32>(reinterpret_cast<uintptr_t>(m)));
   MOVI2R(ArmGen::R1, value);
 
-  // Align SP for the BL
-  SUB(ArmGen::_SP, ArmGen::_SP, 4);
   QuickCallFunction(ArmGen::R12, reinterpret_cast<void*>(&LogRegHelper));
-  ADD(ArmGen::_SP, ArmGen::_SP, 4);
 
   POP(14, ArmGen::R0, ArmGen::R1, ArmGen::R2, ArmGen::R3,
           ArmGen::R4, ArmGen::R5, ArmGen::R6, ArmGen::R7,
           ArmGen::R8, PPC_REG, ArmGen::R10, ArmGen::R11,
           ArmGen::R12, ArmGen::_LR);
 }
+

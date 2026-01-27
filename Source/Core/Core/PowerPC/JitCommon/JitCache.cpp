@@ -180,6 +180,7 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
 
   // Print values before Register
   printf("Registering block:\n");
+  printf("  effectiveAddress = %08x\n", block.effectiveAddress);
   printf("  normalEntry     = %p\n", block.normalEntry);
   printf("  near_end        = %p\n", block.near_end);
   printf("  size            = %u\n", size);
@@ -235,6 +236,7 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
   {
     // Print values before Register
     printf("Just before register call (1):\n");
+    printf("  effectiveAddress = %08x\n", block.effectiveAddress);
     printf("  normalEntry     = %p\n", block.normalEntry);
     printf("  near_end        = %p\n", block.near_end);
     printf("  size            = %u\n", size);
@@ -251,6 +253,7 @@ void JitBaseBlockCache::FinalizeBlock(JitBlock& block, bool block_link,
   {
     // Print values before Register
     printf("Just before register call (2):\n");
+    printf("  effectiveAddress = %08x\n", block.effectiveAddress);
     printf("  normalEntry     = %p\n", block.normalEntry);
     printf("  near_end        = %p\n", block.near_end);
     printf("  size            = %u\n", size);

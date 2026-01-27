@@ -53,24 +53,6 @@ extern "C" void LogRegHelper(const char* msg, uint32_t value)
   else
     printf("%s\n", msg);
   fflush(stdout);
-
-  // Also append to a file in the current directory
-  /*static FILE* logfile = nullptr;
-  if (!logfile)
-  {
-    logfile = fopen("jit_log.txt", "w");  // use "a" to append across runs
-    if (!logfile)
-    {
-      fputs("LogRegHelper: failed to open jit_log.txt\n", stderr);
-      return;
-    }
-  }
-
-  if (value != INVALID_NUM)
-    fprintf(logfile, "%s 0x%08x\n", msg, value);
-  else
-    fprintf(logfile, "%s\n", msg);
-  fflush(logfile);*/
 }
 
 using namespace ArmGen;
@@ -371,12 +353,11 @@ static void ImHere(JitArm& jit)
 
 void JitArm::Cleanup()
 {
-  printf("JIT ARM32: Cleaning up before exit at PC %08x\n", js.compilerPC);
-  fflush(stdout);
+  LogNumFromJIT("JIT ARM32: Cleaning up before exit at PC", js.compilerPC);
+
   if (jo.optimizeGatherPipe && js.fifoBytesSinceCheck > 0)
   {
-    printf("JIT ARM32: Cleaning up before exit at PC %08x -optimizeGatherPipe yes\n", js.compilerPC);
-    fflush(stdout);
+    LogNumFromJIT("JIT ARM32: Cleaning up gather pipe - jo.optimizeGatherPipe && js.fifoBytesSinceCheck > 0");
     PUSH(4, R0, R1, R2, R3);
     MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetGPFifo()));
     QuickCallFunction(R12, (void*)&GPFifo::FastCheckGatherPipe);
@@ -386,9 +367,12 @@ void JitArm::Cleanup()
 
 void JitArm::DoDownCount()
 {
-  printf("JIT ARM32: Doing downcount update at PC %08x\n", js.compilerPC);
-  fflush(stdout);
+  LogNumFromJIT("JIT ARM32: Doing downcount update at PC", js.compilerPC);
+
   ARMReg rA = gpr.GetReg();
+
+  LogRegFromJIT("JIT ARM32: Doing downcount with reg", rA);
+
   LDR(rA, PPC_REG, PPCSTATE_OFF(downcount));
   if (js.downcountAmount < 255) // We can enlarge this if we used rotations
   {
@@ -397,6 +381,9 @@ void JitArm::DoDownCount()
   else
   {
     ARMReg rB = gpr.GetReg(false);
+
+    LogRegFromJIT("JIT ARM32: Doing downcount (js.downcountAmount > 255)", rB);
+
     MOVI2R(rB, js.downcountAmount);
     SUBS(rA, rA, rB);
   }
@@ -728,12 +715,27 @@ void JitArm::FakeLKExit(u32 exit_address_after_return, ArmGen::ARMReg exit_addre
     return;
   }
 
+  auto lr_tmp = gpr.GetReg();
+  {
+    if (exit_address_after_return_reg == ArmGen::INVALID_REG)
+    {
+      MOVI2R(lr_tmp, exit_address_after_return);
+    }
+    else
+    {
+      MOV(lr_tmp, exit_address_after_return_reg);
+    }
+    STR(lr_tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+  }
+
   // Build the packed key: (feature_flags << 30) | (exit_address_after_return >> 2)
   const u32 feature_flags = m_ppc_state.feature_flags;
 
   // Use raw regs for stack ops (avoid copying ScopedARMReg).
   ARMReg retaddr = gpr.GetReg();
   ARMReg key     = gpr.GetReg();
+
+  gpr.Unlock(lr_tmp);
 
   // Compute host address after return: current code ptr + (link stub + 2 words)
   // ARM64 used: BLOCK_LINK_SIZE + sizeof(u32)*2; keep the same layout for parity.
@@ -925,9 +927,23 @@ void JitArm::WriteExit(u32 destination, bool LK, u32 exit_address_after_return,
 
   LK &= m_enable_blr_optimization;
 
+
   const u8* host_address_after_return = nullptr;
   if (LK)
   {
+    auto lr_tmp = gpr.GetReg();
+    {
+      if (exit_address_after_return_reg == ArmGen::INVALID_REG)
+      {
+        MOVI2R(lr_tmp, exit_address_after_return);
+      }
+      else
+      {
+        MOV(lr_tmp, exit_address_after_return_reg);
+      }
+      STR(lr_tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    }
+
     // Push {ARM return addr; packed key} on the stack
     const u32 feature_flags = m_ppc_state.feature_flags;
     const u32 adr_offset = static_cast<u32>(JitArmBlockCache::BLOCK_LINK_SIZE + sizeof(u32) * 2);
@@ -935,6 +951,8 @@ void JitArm::WriteExit(u32 destination, bool LK, u32 exit_address_after_return,
 
     ARMReg retaddr = gpr.GetReg();
     ARMReg key     = gpr.GetReg();
+
+    gpr.Unlock(lr_tmp);
 
     MOVI2R(retaddr, reinterpret_cast<u32>(host_address_after_return));
 
@@ -1045,7 +1063,7 @@ void JitArm::WriteExit(ArmGen::ARMReg dest, bool LK,
 
   if (dest != DISPATCHER_PC)
   {
-    LogNumFromJIT("WriteExit (reg): Updating dispatcher PC as does not match");
+    LogRegFromJIT("WriteExit (reg): Updating dispatcher PC as does not match: dest", dest);
     MOV(DISPATCHER_PC, dest);
   }
 
@@ -1068,7 +1086,7 @@ void JitArm::WriteExit(ArmGen::ARMReg dest, bool LK,
 
   if (!LK)
   {
-    LogNumFromJIT("WriteExit (reg): No LK so branching to dispatcher");
+    LogRegFromJIT("WriteExit (reg): No LK so branching to dispatcher: DISPATCHER_PC", DISPATCHER_PC);
     B(reinterpret_cast<const void*>(dispatcher));
     return;
   }

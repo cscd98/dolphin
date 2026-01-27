@@ -734,6 +734,12 @@ void JitArm::addix(UGeckoInstruction inst)
   INSTRUCTION_START
   JITDISABLE(bJITIntegerOff);
 
+  /*{
+    auto tmp = gpr.GetScopedReg();
+    LDR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+	LogRegFromJIT("addix: LR at start is:", tmp);
+  }*/
+
   u32 d = inst.RD;
   u32 a = inst.RA;
 

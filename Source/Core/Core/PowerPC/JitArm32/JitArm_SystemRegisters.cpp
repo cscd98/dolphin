@@ -57,6 +57,10 @@ FixupBranch JitArm::JumpIfCRFieldBit(int field, int bit, bool jump_if_set)
   return branch;
 }
 
+// In JitArm32/Jit_SystemRegisters.cpp, replace the mtspr function:
+
+// In JitArm32/Jit_SystemRegisters.cpp, replace the mtspr function:
+
 void JitArm::mtspr(UGeckoInstruction inst)
 {
   INSTRUCTION_START
@@ -67,22 +71,19 @@ void JitArm::mtspr(UGeckoInstruction inst)
   // Resolve source GPR once
   ARMReg rd = gpr.R(inst.RD);
 
-  // Snapshot the source into a temp to avoid logging ABI clobbering
+  // Snapshot the source into a temp
   auto src = gpr.GetScopedReg();
   MOV(src, rd);
 
-  LogNumFromJIT("mtspr -> iIndex", iIndex);
-  LogNumFromJIT("mtspr -> RD index", inst.RD);
-  LogRegFromJIT("mtspr -> source (snap)", src);
-
-  {
-    auto check = gpr.GetScopedReg();
-    LDR(check, PPC_REG, PPCSTATE_OFF_GPR(inst.RD));
-    LogRegFromJIT("mtspr -> value from PPCState.gpr[RD]", check);
-  }
-
   switch (iIndex)
   {
+    case SPR_LR:
+    case SPR_CTR:
+      // Branch registers are stored directly - alignment is handled by bclrx/bcctrlx
+      LogRegFromJIT("mtspr -> storing to LR/CTR value", src);
+      STR(src, PPC_REG, PPCSTATE_OFF_SPR(iIndex));
+      break;
+
     case SPR_XER:
     {
       auto tmp  = gpr.GetScopedReg();
@@ -98,13 +99,8 @@ void JitArm::mtspr(UGeckoInstruction inst)
 
       LSR(tmp, src, XER_OV_SHIFT);
       STRB(tmp, PPC_REG, PPCSTATE_OFF(xer_so_ov));
-
-      // Log XER components for clarity
-      LogNumFromJIT("mtspr -> xer_stringctrl off", PPCSTATE_OFF(xer_stringctrl));
-      LogNumFromJIT("mtspr -> xer_ca off", PPCSTATE_OFF(xer_ca));
-      LogNumFromJIT("mtspr -> xer_so_ov off", PPCSTATE_OFF(xer_so_ov));
+      break;
     }
-    break;
 
     // GQRs are contiguous in spr[]
     case SPR_GQR0 + 0:
@@ -115,37 +111,13 @@ void JitArm::mtspr(UGeckoInstruction inst)
     case SPR_GQR0 + 5:
     case SPR_GQR0 + 6:
     case SPR_GQR0 + 7:
-      LogNumFromJIT("mtspr -> spr offset", PPCSTATE_OFF_SPR(iIndex));
       STR(src, PPC_REG, PPCSTATE_OFF_SPR(iIndex));
       break;
 
     default:
-      // All other SPRs (LR, CTR, SRR0, SRR1, HID*, WPAR, DMAU, DMAL, etc.) live in spr[]
-      LogNumFromJIT("mtspr -> spr offset", PPCSTATE_OFF_SPR(iIndex));
+      // All other SPRs (SRR0, SRR1, HID*, WPAR, DMAU, DMAL, etc.)
       STR(src, PPC_REG, PPCSTATE_OFF_SPR(iIndex));
       break;
-  }
-
-  // Verify the write: load back from PPCState.spr[iIndex]
-  auto verify = gpr.GetScopedReg();
-  LDR(verify, PPC_REG, PPCSTATE_OFF_SPR(iIndex));
-  LogRegFromJIT("mtspr -> verified SPR value", verify);
-
-  // If this was LR/CTR, log a masked view the way bclrx will use it
-  if (iIndex == SPR_LR)
-  {
-    auto masked = gpr.GetScopedReg();
-    MOV(masked, verify);
-    // bclrx uses LR & ~3 (word-align)
-    BIC(masked, masked, IMM(3));
-    LogRegFromJIT("mtspr -> LR masked for bclrx", masked);
-  }
-  else if (iIndex == SPR_CTR)
-  {
-    auto masked = gpr.GetScopedReg();
-    MOV(masked, verify);
-    BIC(masked, masked, IMM(3));
-    LogRegFromJIT("mtspr -> CTR masked for bcctrx", masked);
   }
 }
 
@@ -197,8 +169,14 @@ void JitArm::mfspr(UGeckoInstruction inst)
       }
       break;
   }
-}
 
+  if (iIndex == SPR_LR)
+  {
+    auto verify = gpr.GetScopedReg();
+    LDR(verify, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    LogRegFromJIT("mfspr -> loaded LR value", verify);
+  }
+}
 
 void JitArm::mtsr(UGeckoInstruction inst)
 {

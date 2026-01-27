@@ -18,7 +18,7 @@
 // For General registers on the host side, start with R14 and go down as we go
 // R13 is reserved for our stack pointer, don't ever use that. Unless you save
 // it
-// So we have R14, R12, R11, R10 to work with instructions
+// So we have R14 (LR??), R12, R11, R10 to work with instructions
 
 // Dedicated host registers
 

@@ -482,24 +482,6 @@ void FMLLogRegHelper(const char* msg, uint32_t value)
   else
     printf("%s\n", msg);
   fflush(stdout);
-
-  // Also append to a file in the current directory
-  /*static FILE* logfile = nullptr;
-  if (!logfile)
-  {
-    logfile = fopen("jit_log.txt", "w");  // use "a" to append across runs
-    if (!logfile)
-    {
-      fputs("LogRegHelper: failed to open jit_log.txt\n", stderr);
-      return;
-    }
-  }
-
-  if (value != INVALID_NUM)
-    fprintf(logfile, "%s 0x%08x\n", msg, value);
-  else
-    fprintf(logfile, "%s\n", msg);
-  fflush(logfile);*/
 }
 
 void PowerPCManager::CheckExceptions()

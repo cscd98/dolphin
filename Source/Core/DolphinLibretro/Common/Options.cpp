@@ -1212,7 +1212,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
       { nullptr, nullptr }
     },
-    "15"
+    "25"
   },
   {
     Libretro::Options::wiimote::IR_PITCH,
@@ -1246,7 +1246,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
       { nullptr, nullptr }
     },
-    "15"
+    "25"
   },
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }

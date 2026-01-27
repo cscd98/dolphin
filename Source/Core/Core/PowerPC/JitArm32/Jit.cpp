@@ -441,11 +441,15 @@ void JitArm::IntializeSpeculativeConstants()
         MOVI2R(DISPATCHER_PC, js.blockStart);
         STR(DISPATCHER_PC, PPC_REG, PPCSTATE_OFF(pc));
 
+        //PUSH(6, R0, R1, R2, R3, R12, _LR);
+
         MOVI2R(R0, reinterpret_cast<u32>(&m_system.GetJitInterface()));
         MOVI2R(R1, static_cast<u32>(JitInterface::ExceptionType::SpeculativeConstants));
         auto cal = gpr.GetScopedReg();
         MOVI2R(cal, reinterpret_cast<u32>(&JitInterface::CompileExceptionCheckFromJIT));
         BLX(cal);
+
+        //POP(6, R0, R1, R2, R3, R12, _LR);
 
         B(dispatcher_no_check);
         SwitchToNearCode();
@@ -913,6 +917,23 @@ void JitArm::WriteExit(u32 destination, bool LK, u32 exit_address_after_return,
   LogRegFromJIT("WriteExit: exit_address_after_return_reg",
                 exit_address_after_return_reg);
 
+  // fix LR if m_enable_blr_optimization is false
+  /*if (LK && !m_enable_blr_optimization)
+  {
+    if (exit_address_after_return_reg != ArmGen::INVALID_REG)
+    {
+      // LR value is in a register
+      STR(exit_address_after_return_reg, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    }
+    else if(exit_address_after_return != 0)
+    {
+      auto tmp = gpr.GetScopedReg();
+      // LR value is immediate
+      MOVI2R(tmp, exit_address_after_return);
+      STR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    }
+  }*/
+
   // Common cleanup + optional profiling + downcount
   Cleanup();
   if (IsProfilingEnabled())
@@ -929,6 +950,7 @@ void JitArm::WriteExit(u32 destination, bool LK, u32 exit_address_after_return,
 
 
   const u8* host_address_after_return = nullptr;
+
   if (LK)
   {
     auto lr_tmp = gpr.GetReg();
@@ -1066,6 +1088,23 @@ void JitArm::WriteExit(ArmGen::ARMReg dest, bool LK,
     LogRegFromJIT("WriteExit (reg): Updating dispatcher PC as does not match: dest", dest);
     MOV(DISPATCHER_PC, dest);
   }
+
+  // Save LR BEFORE any optimization checks if m_enable_blr_optimization is false!
+  /*if (LK && !m_enable_blr_optimization)
+  {
+    if (exit_address_after_return_reg != ArmGen::INVALID_REG)
+    {
+      // LR value is in a register
+      STR(exit_address_after_return_reg, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    }
+    else if(exit_address_after_return != 0)
+    {
+      auto tmp = gpr.GetScopedReg();
+      // LR value is immediate
+      MOVI2R(tmp, exit_address_after_return);
+      STR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
+    }
+  }*/
 
   Cleanup();
   if (IsProfilingEnabled())

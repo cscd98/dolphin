@@ -1190,9 +1190,9 @@ static struct retro_core_option_v2_definition option_defs[] = {
     nullptr,
     CATEGORY_WIIMOTE,
     {
-      { "15", "15 (Default)" }, { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr },
+      { "15", nullptr }, { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr },
       { "20", nullptr }, { "21", nullptr }, { "22", nullptr }, { "23", nullptr }, { "24", nullptr },
-      { "25", nullptr }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
+      { "25", "25 (Default)" }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
       { "30", nullptr }, { "31", nullptr }, { "32", nullptr }, { "33", nullptr }, { "34", nullptr },
       { "35", nullptr }, { "36", nullptr }, { "37", nullptr }, { "38", nullptr }, { "39", nullptr },
       { "40", nullptr }, { "41", nullptr }, { "42", nullptr }, { "43", nullptr }, { "44", nullptr },
@@ -1213,7 +1213,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
       { nullptr, nullptr }
     },
-    "15"
+    "25"
   },
   {
     Libretro::Options::wiimote::IR_PITCH,
@@ -1223,10 +1223,10 @@ static struct retro_core_option_v2_definition option_defs[] = {
     nullptr,
     CATEGORY_WIIMOTE,
     {
-      { "15", "15 (Default)" },
+      { "15", nullptr },
       { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr },
       { "20", nullptr }, { "21", nullptr }, { "22", nullptr }, { "23", nullptr }, { "24", nullptr },
-      { "25", nullptr }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
+      { "25", "25 (Default)" }, { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr },
       { "30", nullptr }, { "31", nullptr }, { "32", nullptr }, { "33", nullptr }, { "34", nullptr },
       { "35", nullptr }, { "36", nullptr }, { "37", nullptr }, { "38", nullptr }, { "39", nullptr },
       { "40", nullptr }, { "41", nullptr }, { "42", nullptr }, { "43", nullptr }, { "44", nullptr },
@@ -1247,7 +1247,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { "10", nullptr }, { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr },
       { nullptr, nullptr }
     },
-    "15"
+    "25"
   },
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }

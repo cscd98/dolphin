@@ -6,6 +6,8 @@
 
 #ifdef ANDROID
 #include "VideoBackends/OGL/GLInterface/EGLAndroid.h"
+#elif defined(__LIBRETRO__)
+#include "DolphinLibretro/VideoContexts/GLContextLR.h"
 #elif defined(__APPLE__)
 #include "VideoBackends/OGL/GLInterface/AGL.h"
 #elif defined(_WIN32)

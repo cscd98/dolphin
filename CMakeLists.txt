@@ -33,6 +33,8 @@ endif()
 # TODO: Add DSPSpy
 option(DSPTOOL "Build dsptool" OFF)
 
+option(LIBRETRO "Build as a libretro library" OFF)
+
 # Update compiler before calling project()
 if (APPLE)
 	# Use clang compiler
@@ -362,6 +364,31 @@ if(ANDROID)
 	set(USE_EGL 1)
 endif()
 
+if(LIBRETRO)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(TRY_X11 OFF CACHE BOOL "" FORCE)
+  set(DISABLE_WX ON CACHE BOOL "" FORCE)
+  set(ENABLE_QT OFF CACHE BOOL "" FORCE)
+  set(USE_UPNP OFF CACHE BOOL "" FORCE)
+  add_definitions(-D__LIBRETRO__)
+  check_and_add_flag(FPIC -fpic)
+  if(CMAKE_CXX_COMPILER MATCHES "arm-webos-linux-gnueabi-")
+    set(WEBOS TRUE CACHE BOOL "Building for webOS")
+    add_definitions(-D__WEBOS__)
+    set(ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "armv7l")
+      remove_definitions(-marm -march=armv7-a)
+      add_compile_options(-mcpu=cortex-a53 -mfloat-abi=softfp)
+    endif()
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+      message(STATUS "Debug build: enabling extra debug flags")
+      set(CMAKE_C_FLAGS_DEBUG "-O0 -g -fno-omit-frame-pointer")
+      set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -fno-omit-frame-pointer")
+    endif()
+  endif()
+endif()
+
 include_directories(Externals/GL)
 
 add_definitions(-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE)
@@ -426,16 +453,16 @@ if(NOT ANDROID)
 		message("OpenAL NOT found, disabling OpenAL sound backend")
 	endif(OPENAL_FOUND)
 
-	include(FindLLVM OPTIONAL)
-	if (LLVM_FOUND)
-		add_definitions(-DHAS_LLVM=1)
-		set(HAS_LLVM 1)
+	#include(FindLLVM OPTIONAL)
+	#if (LLVM_FOUND)
+	#	add_definitions(-DHAS_LLVM=1)
+	#	set(HAS_LLVM 1)
 
-		include_directories(${LLVM_INCLUDE_DIRS})
-		list(APPEND LIBS ${LLVM_LIBRARIES})
+	#	include_directories(${LLVM_INCLUDE_DIRS})
+	#	list(APPEND LIBS ${LLVM_LIBRARIES})
 
-		message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-	endif()
+	#	message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+	#endif()
 
 	set(USE_X11 0)
 
@@ -453,11 +480,11 @@ if(NOT ANDROID)
 			add_definitions(-DHAVE_X11=0)
 		endif(TRY_X11 AND X11_FOUND)
 
-		if (NOT USE_X11)
-			message(FATAL_ERROR "\n"
-				"No suitable display platform found\n"
-				"Requires x11 to run")
-		endif()
+		#if (NOT USE_X11)
+	#		message(FATAL_ERROR "\n"
+#				"No suitable display platform found\n"
+#				"Requires x11 to run")
+#		endif()
 	endif()
 
 	if(USE_X11)

@@ -26,13 +26,23 @@
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 #include "Core/PowerPC/JitArmCommon/BackPatch.h"
 #include "Core/PowerPC/JitCommon/JitBase.h"
+#include "Core/PowerPC/PowerPC.h"
 
-#define PPCSTATE_OFF(elem) ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
+#define PPCSTATE_OFF(elem) (offsetof(PowerPCState, elem) - offsetof(PowerPCState, spr[0]))
+
+static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096,
+              "LDR can't reach all of the SPRs");
+static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020,
+              "VLDR can't reach all of the FPRs");
+static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0,
+              "VLDR requires FPRs to be 4 byte aligned");
+
+//#define PPCSTATE_OFF(elem) ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
 
 // Some asserts to make sure we will be able to load everything
-static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
-static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020, "VLDR can't reach all of the FPRs");
-static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
+//static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
+//static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020, "VLDR can't reach all of the FPRs");
+//static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
 
 class JitArm : public JitBase, public ArmGen::ARMCodeBlock
 {

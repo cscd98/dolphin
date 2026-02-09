@@ -355,6 +355,15 @@ Device::Device(unsigned device, unsigned p) : m_device(device), m_port(p)
     AddButton(RETRO_DEVICE_ID_JOYPAD_L3, "L3");
     AddButton(RETRO_DEVICE_ID_JOYPAD_R3, "R3");
     AddMotor();
+    if (sensor_interface.set_sensor_state)
+    {
+      AddInput(new AccelInput(m_port, 0, "Accel X"));
+      AddInput(new AccelInput(m_port, 1, "Accel Y"));
+      AddInput(new AccelInput(m_port, 2, "Accel Z"));
+      AddInput(new GyroInput(m_port, 0, "Gyro X"));
+      AddInput(new GyroInput(m_port, 1, "Gyro Y"));
+      AddInput(new GyroInput(m_port, 2, "Gyro Z"));
+    }
     return;
   case RETRO_DEVICE_ANALOG:
     AddAxis(RETRO_DEVICE_ID_ANALOG_X, -0x8000, "X0-", RETRO_DEVICE_INDEX_ANALOG_LEFT);
@@ -367,6 +376,15 @@ Device::Device(unsigned device, unsigned p) : m_device(device), m_port(p)
     AddAxis(RETRO_DEVICE_ID_ANALOG_Y, 0x7FFF, "Y1+", RETRO_DEVICE_INDEX_ANALOG_RIGHT);
     AddAxis(RETRO_DEVICE_ID_JOYPAD_L2, 0x7FFF, "Trigger0+", RETRO_DEVICE_INDEX_ANALOG_BUTTON);
     AddAxis(RETRO_DEVICE_ID_JOYPAD_R2, 0x7FFF, "Trigger1+", RETRO_DEVICE_INDEX_ANALOG_BUTTON);
+    if (sensor_interface.set_sensor_state)
+    {
+      AddInput(new AccelInput(m_port, 0, "Accel X"));
+      AddInput(new AccelInput(m_port, 1, "Accel Y"));
+      AddInput(new AccelInput(m_port, 2, "Accel Z"));
+      AddInput(new GyroInput(m_port, 0, "Gyro X"));
+      AddInput(new GyroInput(m_port, 1, "Gyro Y"));
+      AddInput(new GyroInput(m_port, 2, "Gyro Z"));
+    }
     return;
   case RETRO_DEVICE_MOUSE:
     // TODO: handle last poll_cb relative coordinates correctly.
@@ -446,6 +464,11 @@ void Init(const WindowSystemInfo& wsi)
     WARN_LOG_FMT(COMMON, "RetroArch does not support RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE.");
   }
 
+  if (!environ_cb(RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE, &sensor_interface))
+  {
+    WARN_LOG_FMT(COMMON, "RetroArch does not support sensor interface.");
+  }
+
   g_controller_interface.Initialize(wsi);
   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
 
@@ -458,7 +481,18 @@ void Init(const WindowSystemInfo& wsi)
   int port_max = (Core::System::GetInstance().IsWii() &&
     Libretro::Options::GetCached<int>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII)) ? 8 : 4;
   for (int i = 0; i < port_max; i++)
+  {
+    if (sensor_interface.set_sensor_state)
+    {
+      bool accelOK = sensor_interface.set_sensor_state(i, RETRO_SENSOR_ACCELEROMETER_ENABLE, 60);
+      bool gyroOK = sensor_interface.set_sensor_state(i, RETRO_SENSOR_GYROSCOPE_ENABLE, 60);
+
+      WARN_LOG_FMT(COMMON, "Sensor interface: Port: {} ACCELEROMETER: {} GYROSCOPE: {}", i, accelOK, gyroOK);
+      printf("Sensor interface: Port: %d ACCELEROMETER: %d GYROSCOPE: %d\n", i, accelOK, gyroOK);
+      fflush(stdout);
+    }
     Libretro::Input::AddDevicesForPort(i);
+  }
 
   g_init_wiimotes = true;
   Wiimote::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
@@ -943,10 +977,20 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
         wmButtons->SetControlExpression(2, "B");  // 1
         wmButtons->SetControlExpression(3, "A");  // 2
       }
-      wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
-      wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
-      wmTilt->SetControlExpression(2, "`" + devAnalog + ":X0-`");  // Left
-      wmTilt->SetControlExpression(3, "`" + devAnalog + ":X0+`");  // Right
+      if (Libretro::Input::sensor_interface.set_sensor_state)
+      {
+        wmTilt->SetControlExpression(0, "`" + devAnalog + ":Accel Y`");  // Forward
+        wmTilt->SetControlExpression(1, "`" + devAnalog + ":Accel Y`");  // Backward
+        wmTilt->SetControlExpression(2, "`" + devAnalog + ":Accel X`");  // Left
+        wmTilt->SetControlExpression(3, "`" + devAnalog + ":Accel X`");  // Right
+      }
+      else
+      {
+        wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y0-`");  // Forward
+        wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y0+`");  // Backward
+        wmTilt->SetControlExpression(2, "`" + devAnalog + ":X0-`");  // Left
+        wmTilt->SetControlExpression(3, "`" + devAnalog + ":X0+`");  // Right
+      }
       wmButtons->SetControlExpression(4, "Select");                // -
       wmButtons->SetControlExpression(5, "Start");                 // +
     }

@@ -153,6 +153,7 @@ static struct retro_input_descriptor descWiimote[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2, "Shake Wiimote"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "+"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "-"},
+    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Tilt Left/Right"},
@@ -173,6 +174,7 @@ static struct retro_input_descriptor descWiimoteSideways[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2, "Shake Wiimote"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "+"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "-"},
+    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Tilt Left/Right"},
@@ -196,6 +198,7 @@ static struct retro_input_descriptor descWiimoteNunchuk[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L2, "Shake Nunchuk"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "1"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "2"},
+    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Nunchuk Stick X"},
@@ -864,8 +867,9 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     ControllerEmu::ControlGroup* wmTilt = wm->GetWiimoteGroup(WiimoteGroup::Tilt);
 #if 0
     ControllerEmu::ControlGroup* wmSwing = wm->GetWiimoteGroup(WiimoteGroup::Swing);
-    ControllerEmu::ControlGroup* wmHotkeys = wm->GetWiimoteGroup(WiimoteGroup::Hotkeys);
 #endif
+    ControllerEmu::ControlGroup* wmHotkeys = wm->GetWiimoteGroup(WiimoteGroup::Hotkeys);
+//#endif
 
     const int irMode = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_MODE);
     const int irCenter = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_OFFSET);
@@ -971,8 +975,9 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     wmShake->SetControlExpression(0, "R2 | `" + devMouse + ":Middle`");  // Wiimote shake X
     wmShake->SetControlExpression(1, "R2 | `" + devMouse + ":Middle`");  // Wiimote shake Y
     wmShake->SetControlExpression(2, "R2 | `" + devMouse + ":Middle`");  // Wiimote shake Z
+
+    wmHotkeys->SetControlExpression(0, "L3");  // Sideways Toggle
 #if 0
-    wmHotkeys->SetControlExpression(0, "");  // Sideways Toggle
     wmHotkeys->SetControlExpression(1, "");  // Upright Toggle
     wmHotkeys->SetControlExpression(2, "");  // Sideways Hold
     wmHotkeys->SetControlExpression(3, "");  // Upright Hold

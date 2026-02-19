@@ -385,10 +385,8 @@ bool VideoBackendBase::InitializeShared(std::unique_ptr<AbstractGfx> gfx,
 
 void VideoBackendBase::ShutdownShared()
 {
-#ifndef __LIBRETRO__
   auto& system = Core::System::GetInstance();
   system.GetCustomResourceManager().Shutdown();
-#endif
   g_frame_dumper.reset();
   g_presenter.reset();
 

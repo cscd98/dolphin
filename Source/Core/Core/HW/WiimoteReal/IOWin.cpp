@@ -35,6 +35,12 @@
 
 #pragma comment(lib, "Bthprops.lib")
 
+#if defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR < 13
+static const PROPERTYKEY PKEY_Devices_Aep_AepId = {
+    { 0x3b2ce006, 0x5e61, 0x4fde, { 0xba, 0xb8, 0x9b, 0x8a, 0xac, 0x9b, 0x26, 0xdf } }, 8
+};
+#endif
+
 namespace WiimoteReal
 {
 constexpr u8 DEFAULT_INQUIRY_LENGTH = 3;
@@ -637,8 +643,17 @@ static std::vector<WiimoteScannerWindows::EnumeratedWiimoteInterface> GetAllWiim
     // For some reason, a Balance Board `BusReportedDeviceDesc` is "Nintendo RVL-CNT-01".
     const auto device_description =
         parent_inst
+#ifdef __MINGW32__
+              .and_then([&](auto&& devnode) {
+                return Common::GetDevNodeStringProperty(
+                    std::forward<decltype(devnode)>(devnode),
+                    &DEVPKEY_Device_BusReportedDeviceDesc
+                );
+            })
+#else
             .and_then(std::bind_back(Common::GetDevNodeStringProperty,
                                      &DEVPKEY_Device_BusReportedDeviceDesc))
+#endif
             .transform(WStringToUTF8);
     DEBUG_LOG_FMT(WIIMOTE, " BusReportedDeviceDesc: {}", device_description.value_or("<error>"));
 

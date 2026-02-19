@@ -159,7 +159,11 @@ void FrameUpdateOnCPUThread();
 void OnFrameEnd(Core::System& system);
 
 // Run a function on the CPU thread, asynchronously.
-void RunOnCPUThread(Core::System& system, Common::MoveOnlyFunction<void()> function);
+void RunOnCPUThread(Core::System& system, Common::MoveOnlyFunction<void()> function
+#ifdef __LIBRETRO__
+  , bool wait_for_completion = false
+#endif
+);
 
 // for calling back into UI code without introducing a dependency on it in core
 using StateChangedCallbackFunc = std::function<void(Core::State)>;

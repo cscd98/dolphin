@@ -903,13 +903,21 @@ static void RestoreStateAndUnlock(Core::System& system, const bool unpause_on_un
   system.GetCPU().RestoreStateAndUnlock(unpause_on_unlock);
 }
 
-void RunOnCPUThread(Core::System& system, Common::MoveOnlyFunction<void()> function)
+void RunOnCPUThread(Core::System& system, Common::MoveOnlyFunction<void()> function
+#ifdef __LIBRETRO__
+                    , bool wait_for_completion
+#endif
+                  )
 {
   if (IsCPUThread())
   {
     function();
     return;
   }
+
+#ifdef __LIBRETRO__
+  Common::OneShotEvent cpu_thread_job_finished;
+#endif
 
   // Pause the CPU (set it to stepping mode).
   const bool was_running = PauseAndLock(system);
@@ -918,7 +926,20 @@ void RunOnCPUThread(Core::System& system, Common::MoveOnlyFunction<void()> funct
   {
     // If the core hasn't been started, there is no active CPU thread we can race against.
     function();
+#ifdef __LIBRETRO__
+    wait_for_completion = false;
+#endif
   }
+#ifdef __LIBRETRO__
+  else if (wait_for_completion)
+  {
+    // Queue the job function followed by triggering the event.
+    system.GetCPU().AddCPUThreadJob([&function, &cpu_thread_job_finished] {
+      function();
+      cpu_thread_job_finished.Set();
+    });
+  }
+#endif
   else
   {
     // Queue the job function.
@@ -927,6 +948,16 @@ void RunOnCPUThread(Core::System& system, Common::MoveOnlyFunction<void()> funct
 
   // Release the CPU thread, and let it execute the callback.
   RestoreStateAndUnlock(system, was_running);
+
+#ifdef __LIBRETRO__
+  // If we're waiting for completion, block until the event fires.
+  if (wait_for_completion)
+  {
+    // Periodically yield to the UI thread, so we don't deadlock.
+    while (!cpu_thread_job_finished.WaitFor(std::chrono::milliseconds(10)))
+      Host_YieldToUI();
+  }
+#endif
 }
 
 // --- Callbacks for backends / engine ---

@@ -31,7 +31,7 @@
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
-#include "VideoCommon/Assets/CustomResourceManager.h"
+#include "VideoCommon/Resources/CustomResourceManager.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/OnScreenDisplay.h"
 
@@ -455,7 +455,6 @@ void retro_unload_game(void)
     g_video_backend->Shutdown();
 
   // these are disabled in Shutdown on fullscreen/window toggle
-  system.GetCustomResourceManager().Shutdown();
   system.GetFifo().Shutdown();
 
   // Rest of shutdown

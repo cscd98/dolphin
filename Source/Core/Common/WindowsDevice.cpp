@@ -13,6 +13,12 @@
 #include "Common/CommonFuncs.h"
 #include "Common/Logging/Log.h"
 
+#ifdef __MINGW32__
+#ifndef __callback
+#define __callback
+#endif
+#endif
+
 #if defined(__MINGW32__) && !defined(CM_Get_Device_Interface_Property)
 extern "C" {
 CONFIGRET WINAPI CM_Get_Device_Interface_PropertyW(

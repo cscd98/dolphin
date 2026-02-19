@@ -386,8 +386,11 @@ bool retro_unserialize(const void* data, size_t size)
 
 unsigned retro_get_region(void)
 {
+  Core::System& system = Core::System::GetInstance();
+
   if (DiscIO::IsNTSC(SConfig::GetInstance().m_region) ||
-      (Core::System::GetInstance().IsWii() && Config::Get(Config::SYSCONF_PAL60)))
+      (Core::System::GetInstance().IsWii() && Config::Get(Config::SYSCONF_PAL60)) ||
+       system.IsTriforce())
     return RETRO_REGION_NTSC;
 
   return RETRO_REGION_PAL;

@@ -158,7 +158,14 @@ namespace main_bluetooth {
 }  // namespace bluetooth
 
 // ======================================================
-// System Configuration (SYSCONF)
+// System Configuration (SYSCONF) - GC
+// ======================================================
+namespace sysconf_gc {
+  constexpr const char SP1_DEVICE[] = "dolphin_gc_sp1";
+}
+
+// ======================================================
+// System Configuration (SYSCONF) - Wii
 // ======================================================
 namespace sysconf {
   constexpr const char WIDESCREEN[] = "dolphin_widescreen";

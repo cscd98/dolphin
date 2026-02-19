@@ -14,6 +14,7 @@ static std::unordered_map<std::string, bool> optionDirty;
 static constexpr const char* CATEGORY_CORE = "core";
 static constexpr const char* CATEGORY_AUDIO = "audio";
 static constexpr const char* CATEGORY_INTERFACE = "interface";
+static constexpr const char* CATEGORY_GC = "sysconf_gc";
 static constexpr const char* CATEGORY_SYSCONF = "sysconf";
 static constexpr const char* CATEGORY_GFX_HARDWARE = "graphics_hardware";
 static constexpr const char* CATEGORY_GFX_SETTINGS = "graphics_settings";
@@ -39,8 +40,13 @@ static const struct retro_core_option_v2_category option_cats[] = {
     "Configure on-screen display and logging."
   },
   {
+    CATEGORY_GC,
+    "System Configuration - Gamecube",
+    "Configure Gamecube system settings."
+  },
+  {
     CATEGORY_SYSCONF,
-    "System Configuration",
+    "System Configuration - Wii",
     "Configure Wii system settings."
   },
   {
@@ -410,6 +416,31 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "0"
+  },
+
+  // ========== SYSCONF (GC) ==========
+  {
+    Libretro::Options::sysconf_gc::SP1_DEVICE,
+    "System Configuration (GC) > SP1 Device",
+    "SP1 Device",
+    "Select the device connected to the GameCube SP1 slot.",
+    nullptr,
+    CATEGORY_GC,
+    {
+        { "255", "None" },              // EXIDeviceType::None
+        { "0",   "Dummy" },             // EXIDeviceType::Dummy
+        { "5",   "Ethernet" },          // EXIDeviceType::Ethernet
+        { "10",  "Ethernet XLink" },    // EXIDeviceType::EthernetXLink
+        { "11",  "Ethernet TapServer" },// EXIDeviceType::EthernetTapServer
+        { "12",  "Ethernet Built-In" }, // EXIDeviceType::EthernetBuiltIn
+#ifdef HAVE_CPPIPC
+        { "14",  "Ethernet IPC" },      // EXIDeviceType::EthernetIPC
+#endif
+        { "13",  "Modem TapServer" },   // EXIDeviceType::ModemTapServer
+        { "6",   "Baseboard" },         // EXIDeviceType::Baseboard
+        { nullptr, nullptr }
+    },
+    "255" // default: None
   },
 
   // ========== SYSCONF.IPL ==========

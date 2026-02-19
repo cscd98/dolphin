@@ -75,6 +75,8 @@ static struct retro_input_descriptor descGC[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "L-Analog"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "R-Analog"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R, "Z"},
+    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L, "Triforce - Test"},
+    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "Triforce - Coin"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "Start"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Control Stick X"},
@@ -727,7 +729,10 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
   if (device == RETRO_DEVICE_GC_ON_WII) // Disconnect Wii device if we're using GC controller as device type to avoid conflict
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::None);
 
-  Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(port > 3 ? port - 4 : port), SerialInterface::SIDEVICE_GC_CONTROLLER);
+  Core::System& system = Core::System::GetInstance();
+
+  Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(port > 3 ? port - 4 : port),
+    system.IsTriforce() ? SerialInterface::SIDEVICE_AM_BASEBOARD : SerialInterface::SIDEVICE_GC_CONTROLLER);
   si.ChangeDevice(Config::Get(Config::GetInfoForSIDevice(port > 3 ? port - 4 : port)), port > 3 ? port - 4 : port);
 
   GCPad* gcPad = (GCPad*)Pad::GetConfig()->GetController(port > 3 ? port - 4 : port);
@@ -743,6 +748,7 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
   ControllerEmu::ControlGroup* gcTriggers = gcPad->GetGroup(PadGroup::Triggers);
   ControllerEmu::ControlGroup* gcRumble = gcPad->GetGroup(PadGroup::Rumble);
   ControllerEmu::ControlGroup* gcOptions = gcPad->GetGroup(PadGroup::Options);
+  ControllerEmu::ControlGroup* gcTriforce = gcPad->GetGroup(PadGroup::Triforce);
 #if 0
   ControllerEmu::ControlGroup* gcMic = gcPad->GetGroup(PadGroup::Mic);
 #endif
@@ -772,6 +778,10 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
                                    "`" + devAnalog + ":Trigger0+`|L3");  // L-trigger Soft Press
   gcTriggers->SetControlExpression(3,
                                    "`" + devAnalog + ":Trigger1+`|R3");  // R-trigger Soft Press
+  gcTriforce->SetControlExpression(0, "L");  // Test
+  gcTriforce->SetControlExpression(1, "L3&R3"); // Service
+  gcTriforce->SetControlExpression(2, "Select"); // Coin
+
   bool enableRumble = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ENABLE_RUMBLE);
   if (enableRumble)
     gcRumble->SetControlExpression(0, "Rumble");

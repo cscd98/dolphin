@@ -205,6 +205,8 @@ bool BootCore(Core::System& system, std::unique_ptr<BootParameters> boot,
       case DiscIO::Region::PAL:
         ipl_path = EUR_DIR DIR_SEP GC_IPL;
         break;
+      case DiscIO::Region::DEV:
+        ipl_path = DEV_DIR DIR_SEP GC_IPL;
       default:
         break;
     }
@@ -242,6 +244,7 @@ bool BootCore(Core::System& system, std::unique_ptr<BootParameters> boot,
             std::move(boot->boot_session_data)),
         wsi);
   }
+
   return Core::Init(system, std::move(boot), wsi);
 }
 

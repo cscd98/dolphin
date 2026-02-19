@@ -15,6 +15,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/DVD/DVDInterface.h"
+#include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/VideoInterface.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/PowerPC/PowerPC.h"
@@ -198,6 +199,20 @@ bool retro_load_game(const struct retro_game_info* game)
   // Main.BluetoothPassthrough
   Config::SetBase(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED,
     Libretro::GetOption<bool>(Libretro::Options::main_bluetooth::BLUETOOTH_PASSTHROUGH, /*def=*/false));
+
+  // SYSCONF (GC)
+  {
+    const std::string value =
+      Libretro::GetOption<std::string>(
+        sysconf_gc::SP1_DEVICE,
+        "255" // ExpansionInterface::EXIDeviceType::None
+      );
+
+    const int device_int = std::stoi(value);
+    const auto device = static_cast<ExpansionInterface::EXIDeviceType>(device_int);
+
+    Config::SetBase(Config::MAIN_SERIAL_PORT_1, device);
+  }
 
   // SYSCONF.IPL
   Config::SetBase(Config::SYSCONF_WIDESCREEN,

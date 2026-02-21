@@ -5,7 +5,7 @@
 //#include "VideoCommon/Present.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
-//#include "DolphinLibretro/Video.h"
+#include "DolphinLibretro/Video.h"
 
 GLContextLR::GLContextLR()
 {

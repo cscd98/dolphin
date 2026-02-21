@@ -18,6 +18,7 @@
 // ----------
 #pragma once
 
+#include "Core/PowerPC/PowerPC.h"
 #include "Core/PowerPC/CPUCoreBase.h"
 #include "Core/PowerPC/PPCAnalyst.h"
 #include "Core/PowerPC/JitArm32/JitArmCache.h"
@@ -26,16 +27,18 @@
 #include "Core/PowerPC/JitArm32/JitRegCache.h"
 #include "Core/PowerPC/JitArmCommon/BackPatch.h"
 #include "Core/PowerPC/JitCommon/JitBase.h"
-#include "Core/PowerPC/PowerPC.h"
 
-#define PPCSTATE_OFF(elem) (offsetof(PowerPCState, elem) - offsetof(PowerPCState, spr[0]))
+#include <cstddef>
+
+/*#define PPCSTATE_OFF(elem) \
+  static_cast<int>(offsetof(PowerPC::PowerPCState, elem) - offsetof(PowerPC::PowerPCState, spr[0]))
 
 static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096,
               "LDR can't reach all of the SPRs");
 static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020,
               "VLDR can't reach all of the FPRs");
 static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0,
-              "VLDR requires FPRs to be 4 byte aligned");
+              "VLDR requires FPRs to be 4 byte aligned");*/
 
 //#define PPCSTATE_OFF(elem) ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
 
@@ -43,6 +46,25 @@ static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0,
 //static_assert(PPCSTATE_OFF(spr[1023]) > -4096 && PPCSTATE_OFF(spr[1023]) < 4096, "LDR can't reach all of the SPRs");
 //static_assert(PPCSTATE_OFF(ps[0][0]) >= -1020 && PPCSTATE_OFF(ps[0][0]) <= 1020, "VLDR can't reach all of the FPRs");
 //static_assert((PPCSTATE_OFF(ps[0][0]) % 4) == 0, "VLDR requires FPRs to be 4 byte aligned");
+
+
+// Runtime offset: uses the actual global ppcState instance.
+// This is what JIT code (STR/LDR immediates) should use.
+#define PPCSTATE_OFF(elem) \
+  ((s32)STRUCT_OFF(PowerPC::ppcState, elem) - (s32)STRUCT_OFF(PowerPC::ppcState, spr[0]))
+
+// Compile-time offset: uses the type, valid in static_assert.
+#define PPCSTATE_OFF_C(elem) \
+  (static_cast<int>(offsetof(PowerPC::PowerPCState, elem) - offsetof(PowerPC::PowerPCState, spr[0])))
+
+// Some asserts to make sure we will be able to load everything
+static_assert(PPCSTATE_OFF_C(spr[1023]) > -4096 && PPCSTATE_OFF_C(spr[1023]) < 4096,
+              "LDR can't reach all of the SPRs");
+static_assert(PPCSTATE_OFF_C(ps[0][0]) >= -1020 && PPCSTATE_OFF_C(ps[0][0]) <= 1020,
+              "VLDR can't reach all of the FPRs");
+static_assert((PPCSTATE_OFF_C(ps[0][0]) % 4) == 0,
+              "VLDR requires FPRs to be 4 byte aligned");
+
 
 class JitArm : public JitBase, public ArmGen::ARMCodeBlock
 {

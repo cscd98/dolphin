@@ -3,7 +3,9 @@
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
 #include "AudioCommon/AudioCommon.h"
-#include "VideoCommon/Present.h"
+//#include "VideoCommon/Present.h"
+#include "Core/CoreParameter.h"
+#include "Core/ConfigManager.h"
 #include "DolphinLibretro/Common/Globals.h"
 
 namespace Libretro
@@ -31,13 +33,15 @@ enum CallBackMode
 unsigned int GetCoreSampleRate()
 {
   // when called from retro_run
-  SoundStream* sound_stream = Core::System::GetInstance().GetSoundStream();
+  SoundStream* sound_stream = nullptr; //Core::System::GetInstance().GetSoundStream();
   double sampleRate = LEGACY_DEFAULT_SAMPLE_RATE;
   if (sound_stream && sound_stream->GetMixer() &&
       sound_stream->GetMixer()->GetSampleRate() != 0)
     return sound_stream->GetMixer()->GetSampleRate();
   // used in Stream constructor
-  if (Core::System::GetInstance().IsWii())
+  SCoreStartupParameter& StartUp = SConfig::GetInstance().m_LocalCoreStartupParameter;
+
+  if (StartUp.bWii)
     return sampleRate;
   else if (sampleRate == 32000u)
     return 32029;
@@ -58,7 +62,7 @@ unsigned int GetRetroSampleRate()
 unsigned int GetActiveSampleRate()
 {
   // when called from retro_run
-  SoundStream* sound_stream = Core::System::GetInstance().GetSoundStream();
+  SoundStream* sound_stream = nullptr; //Core::System::GetInstance().GetSoundStream();
 
   if (sound_stream && sound_stream->GetMixer() &&
     sound_stream->GetMixer()->GetSampleRate() != 0)
@@ -125,8 +129,14 @@ void Init()
 inline unsigned GetSamplesForFrame(unsigned sample_rate)
 {
   double frame_time_sec = FrameTiming::target_frame_duration_usec.load(std::memory_order_relaxed) * 1e-6;
-  return std::clamp(static_cast<unsigned>(frame_time_sec * sample_rate),
-                    MIN_SAMPLES, MAX_SAMPLES);
+  //return std::clamp(static_cast<unsigned>(frame_time_sec * sample_rate),
+  //                  MIN_SAMPLES, MAX_SAMPLES_LR);
+  unsigned v = static_cast<unsigned>(frame_time_sec * sample_rate);
+  if (v < MIN_SAMPLES)
+    return MIN_SAMPLES;
+  if (v > MAX_SAMPLES_LR)
+    return MAX_SAMPLES_LR;
+  return v;
 }
 
 bool Stream::Init()
@@ -134,7 +144,7 @@ bool Stream::Init()
   // this is called much later than retro_get_system_av_info when not using callbacks
   m_sample_rate = GetActiveSampleRate();
 
-  GetMixer()->SetSampleRate(m_sample_rate);
+  //GetMixer()->SetSampleRate(m_sample_rate);
 
   return true;
 }
@@ -171,11 +181,11 @@ void Stream::Update(unsigned int num_samples)
   avail -= MIN_SAMPLES;
 
   // Then push any remaining in MAX_SAMPLES chunks
-  while (avail > MAX_SAMPLES)
+  while (avail > MAX_SAMPLES_LR)
   {
-    m_mixer->Mix(m_buffer, MAX_SAMPLES);
-    batch_cb(m_buffer, MAX_SAMPLES);
-    avail -= MAX_SAMPLES;
+    m_mixer->Mix(m_buffer, MAX_SAMPLES_LR);
+    batch_cb(m_buffer, MAX_SAMPLES_LR);
+    avail -= MAX_SAMPLES_LR;
   }
   if (avail)
   {
@@ -196,11 +206,11 @@ void Stream::MixAndPush(unsigned int num_samples)
   pending = 0; // consume all
 
   // Then push any remaining in MAX_SAMPLES chunk
-  while (avail >= MAX_SAMPLES)
+  while (avail >= MAX_SAMPLES_LR)
   {
-    m_mixer->Mix(m_buffer, MAX_SAMPLES);
-    batch_cb(m_buffer, MAX_SAMPLES);
-    avail -= MAX_SAMPLES;
+    m_mixer->Mix(m_buffer, MAX_SAMPLES_LR);
+    batch_cb(m_buffer, MAX_SAMPLES_LR);
+    avail -= MAX_SAMPLES_LR;
   }
   
   if (avail >= MIN_SAMPLES)
@@ -234,7 +244,11 @@ void Stream::PushAudioForFrame()
       samples_for_frame = m_sample_rate / 50;
   }
   
-  samples_for_frame = std::clamp(samples_for_frame, MIN_SAMPLES, MAX_SAMPLES);
+  //samples_for_frame = std::clamp(samples_for_frame, MIN_SAMPLES, MAX_SAMPLES_LR);
+  if (samples_for_frame < MIN_SAMPLES)
+    samples_for_frame = MIN_SAMPLES;
+  else if (samples_for_frame > MAX_SAMPLES_LR)
+    samples_for_frame = MAX_SAMPLES_LR;
 
   MixAndPush(samples_for_frame);
 }
@@ -259,15 +273,15 @@ void Stream::ProcessCallBack()
   if (!Libretro::Audio::g_audio_state_cb)
     return;
 
-  auto& system = Core::System::GetInstance();
-  if (!system.IsSoundStreamRunning())
-    return;
+  //auto& system = Core::System::GetInstance();
+  //if (!system.IsSoundStreamRunning())
+  //  return;
 
   if (Libretro::Audio::g_buf_support.load(std::memory_order_relaxed))
   {
     unsigned occ = Libretro::Audio::g_buf_occupancy.load(std::memory_order_relaxed);
 
-    if (occ >= MAX_SAMPLES)
+    if (occ >= MAX_SAMPLES_LR)
       return;
 
     // Use frame time to decide how much to push
@@ -280,7 +294,12 @@ void Stream::ProcessCallBack()
 
   unsigned to_mix = GetSamplesForFrame(m_sample_rate);
   // Clamp to sane range
-  to_mix = std::clamp(to_mix, MIN_SAMPLES, MAX_SAMPLES);
+  //to_mix = std::clamp(to_mix, MIN_SAMPLES, MAX_SAMPLES_LR);
+  if (to_mix < MIN_SAMPLES)
+    to_mix = MIN_SAMPLES;
+  else if (to_mix > MAX_SAMPLES_LR)
+    to_mix = MAX_SAMPLES_LR;
+
   m_mixer->Mix(m_buffer, to_mix);
   batch_cb(m_buffer, to_mix);
 }
@@ -344,7 +363,7 @@ namespace FrameTiming
 
   bool IsFastForwarding()
   {
-    return VideoCommon::g_is_fast_forwarding;
+    return false; // VideoCommon::g_is_fast_forwarding;
   }
 
   void CheckForFastForwarding()
@@ -357,12 +376,12 @@ namespace FrameTiming
     // Query the fast-forward state from RetroArch
     if (Libretro::environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &is_fast_forwarding))
     {
-      VideoCommon::g_is_fast_forwarding = is_fast_forwarding;
+      //VideoCommon::g_is_fast_forwarding = is_fast_forwarding;
       return;
     }
 
     // Environment call not supported
-    VideoCommon::g_is_fast_forwarding = false;
+    //VideoCommon::g_is_fast_forwarding = false;
   }
 
   void ThrottleFrame()
@@ -404,8 +423,8 @@ void retroarch_audio_state_cb(bool enable)
 // Notifies libretro that audio data should be written
 void retroarch_audio_cb()
 {
-  if (auto* s = Core::System::GetInstance().GetSoundStream())
-    s->ProcessCallBack();
+  //if (auto* s = Core::System::GetInstance().GetSoundStream())
+  //  s->ProcessCallBack();
 }
 
 void retroarch_audio_buffer_status_cb(bool active,

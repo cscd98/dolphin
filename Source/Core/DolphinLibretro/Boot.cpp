@@ -6,19 +6,19 @@
 
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
-#include "Common/Version.h"
+//#include "Common/Version.h"
 #include "Core/Boot/Boot.h"
 #include "Core/BootManager.h"
-#include "Core/Config/GraphicsSettings.h"
-#include "Core/Config/MainSettings.h"
-#include "Core/Config/SYSCONFSettings.h"
+//#include "Core/Config/GraphicsSettings.h"
+//#include "Core/Config/MainSettings.h"
+//#include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
-#include "Core/HW/DVD/DVDInterface.h"
+//#include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/VideoInterface.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/PowerPC/PowerPC.h"
-#include "Core/System.h"
+//#include "Core/System.h"
 #include "DolphinLibretro/Audio.h"
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Log.h"
@@ -27,16 +27,16 @@
 #include "DolphinLibretro/Video.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
-#include "UICommon/DiscordPresence.h"
+//#include "UICommon/DiscordPresence.h"
 #include "UICommon/UICommon.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
-#include "VideoCommon/Assets/CustomResourceManager.h"
+//#include "VideoCommon/Assets/CustomResourceManager.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/OnScreenDisplay.h"
 
-namespace fs = std::filesystem;
+//namespace fs = std::filesystem;
 
 namespace Libretro
 {
@@ -85,33 +85,34 @@ bool retro_load_game(const struct retro_game_info* game)
 
   if(!sysdir_set)
   {
-    File::SetSysDirectory(sys_dir);
+    File::GetSysDirectory(sys_dir);
     sysdir_set = true;
   }
 #else
-  File::SetSysDirectory(sys_dir);
+  //File::SetSysDirectory(sys_dir);
 #endif
 
   UICommon::SetUserDirectory(user_dir);
   UICommon::CreateDirectories();
   UICommon::Init();
   Libretro::Log::Init();
-  Discord::SetDiscordPresenceEnabled(false);
-  Common::SetEnableAlert(false);
-  Common::SetAbortOnPanicAlert(false);
-  Common::RegisterMsgAlertHandler([](const char* caption, const char* text,
+  //Discord::SetDiscordPresenceEnabled(false);
+  //Common::SetEnableAlert(false);
+ // Common::SetAbortOnPanicAlert(false);
+  /*Common::RegisterMsgAlertHandler([](const char* caption, const char* text,
     bool yes_no, Common::MsgType style) -> bool
   {
     // Log the message instead of showing a popup
     INFO_LOG_FMT(COMMON, "Suppressed popup: {} - {}", caption, text);
     return true; // Always "continue"
-  });
+  });*/
 
-  INFO_LOG_FMT(COMMON, "SCM Git revision: {}", Common::GetScmRevGitStr());
+  //INFO_LOG_FMT(COMMON, "SCM Git revision: {}", Common::GetScmRevGitStr());
   INFO_LOG_FMT(COMMON, "User Directory set to '{}'", user_dir);
   INFO_LOG_FMT(COMMON, "System Directory set to '{}'", sys_dir);
 
   // Main.Core
+#ifdef NOT_OLD
   Config::SetBase(Config::MAIN_CPU_CORE,
     static_cast<PowerPC::CPUCore>(
         Libretro::GetOption<int>(
@@ -350,7 +351,7 @@ bool retro_load_game(const struct retro_game_info* game)
   }
 
   /* disable throttling emulation to match GetTargetRefreshRate() */
-  Core::SetIsThrottlerTempDisabled(true);
+  //Core::SetIsThrottlerTempDisabled(true);
   SConfig::GetInstance().bBootToPause = true;
 
 #ifdef IPHONEOS
@@ -369,25 +370,27 @@ bool retro_load_game(const struct retro_game_info* game)
     OSD::AddMessage("CPU: Just in time compiler disabled as unavailable on your system", OSD::Duration::NORMAL);
   }
 #endif
-  INFO_LOG_FMT(BOOT, "CPU Core: {}", Libretro::Options::CPUCoreToString());
-  INFO_LOG_FMT(BOOT, "Fastmem enabled = {}", (Config::Get(Config::MAIN_FASTMEM)) ? "Yes" : "No");
-  INFO_LOG_FMT(BOOT, "JIT debug enabled = {}", Config::IsDebuggingEnabled() ? "Yes" : "No");
+#endif // OLD
+
+  //INFO_LOG_FMT(BOOT, "CPU Core: {}", Libretro::Options::CPUCoreToString());
+  //INFO_LOG_FMT(BOOT, "Fastmem enabled = {}", (Config::Get(Config::MAIN_FASTMEM)) ? "Yes" : "No");
+  //INFO_LOG_FMT(BOOT, "JIT debug enabled = {}", Config::IsDebuggingEnabled() ? "Yes" : "No");
 
   Libretro::FrameTiming::Init();
   Libretro::Audio::Init();
   Libretro::Video::Init();
-  WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
-  VideoBackendBase::PopulateBackendInfo(wsi);
-  NOTICE_LOG_FMT(VIDEO, "Using GFX backend: {}", Config::Get(Config::MAIN_GFX_BACKEND));
+  //WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+  //VideoBackendBase::PopulateBackendInfo(wsi);
+  //NOTICE_LOG_FMT(VIDEO, "Using GFX backend: {}", Config::Get(Config::MAIN_GFX_BACKEND));
 
   std::vector<std::string> normalized_game_paths;
-  normalized_game_paths.push_back(Libretro::File::NormalizePath(game->path));
+  //normalized_game_paths.push_back(Libretro::File::NormalizePath(game->path));
   std::string folder_path_str;
   std::string filename_str;
   std::string extension;
   SplitPath(normalized_game_paths.front(), &folder_path_str, &filename_str, &extension);
-  fs::path folder_path(folder_path_str);
-  fs::path filename(filename_str);
+  //fs::path folder_path(folder_path_str);
+  //fs::path filename(filename_str);
   std::transform(extension.begin(), extension.end(), extension.begin(),
                 [](unsigned char c){ return std::tolower(c); });
 
@@ -405,7 +408,7 @@ bool retro_load_game(const struct retro_game_info* game)
 
   if (extension == ".m3u" || extension == ".m3u8")
   {
-    normalized_game_paths = ReadM3UFile(normalized_game_paths.front(), folder_path_str);
+    //normalized_game_paths = ReadM3UFile(normalized_game_paths.front(), folder_path_str);
     if (normalized_game_paths.empty())
     {
       ERROR_LOG_FMT(BOOT, "Could not boot {}. M3U contains no paths", game->path);
@@ -413,17 +416,17 @@ bool retro_load_game(const struct retro_game_info* game)
     }
   }
 
-  for (auto& normalized_game_path : normalized_game_paths)
-    Libretro::disk_paths.push_back(Libretro::File::DenormalizePath(normalized_game_path));
+  //for (auto& normalized_game_path : normalized_game_paths)
+  //  Libretro::disk_paths.push_back(Libretro::File::DenormalizePath(normalized_game_path));
 
-  Libretro::Input::Init(wsi);
+  Libretro::Input::Init(); //);
 
-  if (!BootManager::BootCore(Core::System::GetInstance(),
+  /*if (!BootManager::BootCore(Core::System::GetInstance(),
                              BootParameters::GenerateFromFile(normalized_game_paths), wsi))
   {
     ERROR_LOG_FMT(BOOT, "Could not boot {}", game->path);
     return false;
-  }
+  }*/
 
   Libretro::Input::InitStage2();
 
@@ -438,30 +441,30 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info* i
 
 void retro_unload_game(void)
 {
-  auto& system = Core::System::GetInstance();
+  //auto& system = Core::System::GetInstance();
 
-  if (Core::IsRunning(system))
+  if (Core::IsRunning()) //system))
   {
-    Core::Stop(system);
+    Core::Stop(); //system);
 #if defined(__LIBUSB__)
-    system.ShutdownUSBScanner();
+    //system.ShutdownUSBScanner();
 #endif
 
-    Core::Shutdown(system);
+    //Core::Shutdown(); //system);
   }
 
   if (!g_context_status.IsDestroyed() && g_video_backend)
     g_video_backend->Shutdown();
 
   // these are disabled in Shutdown on fullscreen/window toggle
-  system.GetCustomResourceManager().Shutdown();
-  system.GetFifo().Shutdown();
+  //system.GetCustomResourceManager().Shutdown();
+  //system.GetFifo().Shutdown();
 
   // Rest of shutdown
   g_context_status.MarkUnitialized();
   Libretro::Input::Shutdown();
   Libretro::Log::Shutdown();
-  UICommon::ShutdownControllers();
+  //UICommon::ShutdownControllers();
   UICommon::Shutdown();
 }
 
@@ -479,11 +482,11 @@ static bool retro_set_eject_state(bool ejected)
   {
     if (disk_index < disk_paths.size())
     {
-      Core::RunOnCPUThread(Core::System::GetInstance(), [] {
+      /*Core::RunOnCPUThread(Core::System::GetInstance(), [] {
         Core::CPUThreadGuard guard{Core::System::GetInstance()};
         const std::string path = Libretro::File::NormalizePath(disk_paths[disk_index]);
         Core::System::GetInstance().GetDVDInterface().ChangeDisc(guard, path);
-      }, true);  // wait_for_completion = true
+      }, true);*/  // wait_for_completion = true
     }
   }
 

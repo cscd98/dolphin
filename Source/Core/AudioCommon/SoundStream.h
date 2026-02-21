@@ -60,4 +60,8 @@ public:
 			WARN_LOG(DSPHLE, "Audio logging already stopped");
 		}
 	}
+#ifdef __LIBRETRO__
+  virtual void Update(unsigned int num_samples) {}
+  virtual void ProcessCallBack() {}
+#endif
 };

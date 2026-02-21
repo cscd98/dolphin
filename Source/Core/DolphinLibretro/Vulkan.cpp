@@ -9,7 +9,7 @@
 #include <mutex>
 #include <vector>
 
-#include "Core/Config/MainSettings.h"
+//#include "Core/Config/MainSettings.h"
 #include "DolphinLibretro/Video.h"
 #include "DolphinLibretro/Vulkan.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"

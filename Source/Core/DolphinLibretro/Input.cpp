@@ -7,33 +7,35 @@
 #include "Common/CommonTypes.h"
 #include "Common/IniFile.h"
 #include "Common/Logging/Log.h"
-#include "Core/Config/MainSettings.h"
+//#include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
-#include "Core/FreeLookManager.h"
-#include "Core/HW/GBAPad.h"
+//#include "Core/FreeLookManager.h"
+//#include "Core/HW/GBAPad.h"
 #include "Core/HW/GCKeyboard.h"
 #include "Core/HW/GCPad.h"
 #include "Core/HW/GCPadEmu.h"
 #include "Core/HW/Wiimote.h"
-#include "Core/HW/WiimoteEmu/Extension/Classic.h"
-#include "Core/HW/WiimoteEmu/Extension/Nunchuk.h"
+//#include "Core/HW/WiimoteEmu/Extension/Classic.h"
+//#include "Core/HW/WiimoteEmu/Extension/Nunchuk.h"
 #include "Core/HW/WiimoteEmu/WiimoteEmu.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
-#include "Core/HW/SI/SI.h"
-#include "Core/HW/SI/SI_Device.h"
+//#include "Core/HW/SI/SI.h"
+//#include "Core/HW/SI/SI_Device.h"
 #include "Core/Host.h"
-#include "Core/System.h"
-#include "DolphinLibretro/Input.h"
+//#include "Core/System.h"
+//#include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Options.h"
-#include "InputCommon/ControlReference/ControlReference.h"
-#include "InputCommon/ControlReference/ExpressionParser.h"
-#include "InputCommon/ControllerEmu/Control/Control.h"
-#include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
-#include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
+//#include "InputCommon/ControlReference/ControlReference.h"
+//#include "InputCommon/ControlReference/ExpressionParser.h"
+//#include "InputCommon/ControllerEmu/Control/Control.h"
+//#include "InputCommon/ControllerEmu/ControlGroup/Attachments.h"
+//#include "InputCommon/ControllerEmu/Setting/NumericSetting.h"
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
-#include "InputCommon/GCAdapter.h"
+//#include "InputCommon/GCAdapter.h"
 #include "InputCommon/GCPadStatus.h"
 #include "InputCommon/InputConfig.h"
+#include "Core/CoreParameter.h"
+#include "Core/ConfigManager.h"
 
 //#include "UICommon/UICommon.h"
 //#include "Core/HotkeyManager.h"
@@ -307,7 +309,7 @@ private:
 
 public:
   Device(unsigned device, unsigned port);
-  ciface::Core::DeviceRemoval UpdateInput() override
+  /*ciface::Core::DeviceRemoval UpdateInput() override
   {
 #if 0
     if (!Libretro::Input::poll_cb)
@@ -318,7 +320,7 @@ public:
     Libretro::Input::poll_cb();
 #endif
     return ciface::Core::DeviceRemoval::Keep;
-  }
+  }*/
   std::string GetName() const override { return GetDeviceName(m_device); }
   std::string GetSource() const override { return source; }
   unsigned int GetPort() const { return m_port; }
@@ -412,10 +414,10 @@ Device::Device(unsigned device, unsigned p) : m_device(device), m_port(p)
 
 static void AddDevicesForPort(unsigned port)
 {
-  g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_JOYPAD, port));
-  g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_ANALOG, port));
-  g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_MOUSE, port));
-  g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_POINTER, port));
+  //g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_JOYPAD, port));
+  //g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_ANALOG, port));
+  //g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_MOUSE, port));
+  //g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_POINTER, port));
 }
 
 #if 0
@@ -434,29 +436,30 @@ static void RemoveDevicesForPort(unsigned port)
 }
 #endif
 
-void Init(const WindowSystemInfo& wsi)
+void Init() //const WindowSystemInfo& wsi)
 {
   if (!environ_cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble))
   {
     WARN_LOG_FMT(COMMON, "RetroArch does not support RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE.");
   }
 
-  g_controller_interface.Initialize(wsi);
-  g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
+  //g_controller_interface.Initialize(wsi);
+  //g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
 
-  GCAdapter::Init();
-  Pad::Initialize();
-  Pad::InitializeGBA();
-  Keyboard::Initialize();
-  FreeLook::Initialize();
+  //GCAdapter::Init();
+  //Pad::Initialize();
+  //Pad::InitializeGBA();
+  //Keyboard::Initialize();
+  //FreeLook::Initialize();
 
-  int port_max = (Core::System::GetInstance().IsWii() &&
+  SCoreStartupParameter& StartUp = SConfig::GetInstance().m_LocalCoreStartupParameter;
+  int port_max = (StartUp.bWii &&
     Libretro::Options::GetCached<int>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII)) ? 8 : 4;
   for (int i = 0; i < port_max; i++)
     Libretro::Input::AddDevicesForPort(i);
 
   g_init_wiimotes = true;
-  Wiimote::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
+  //Wiimote::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
 }
 
 void InitStage2()
@@ -465,7 +468,9 @@ void InitStage2()
       {"GameCube Controller", RETRO_DEVICE_JOYPAD},
   };
 
-  if (Core::System::GetInstance().IsWii() && !Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
+  SCoreStartupParameter& StartUp = SConfig::GetInstance().m_LocalCoreStartupParameter;
+
+  /*if (StartUp.bWii && !Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
   {
     // Wii devices listed in ports 1-4, GC controllers in ports 5-8
     if (Libretro::Options::GetCached<int>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII))
@@ -536,23 +541,23 @@ void InitStage2()
     {
       WARN_LOG_FMT(COMMON, "RetroArch does not support RETRO_ENVIRONMENT_SET_CONTROLLER_INFO.");
     }
-  }
+  }*/
 }
 
 void Shutdown()
 {
   if (g_init_wiimotes)
   {
-    Wiimote::ResetAllWiimotes();
+    //Wiimote::ResetAllWiimotes();
     Wiimote::Shutdown();
     g_init_wiimotes = false;
   }
 
 #if defined(__LIBUSB__)
-  GCAdapter::ResetRumble();
+  //GCAdapter::ResetRumble();
 #endif
-  for (int i = 0; i < 4; ++i)
-    Pad::ResetRumble(i);
+  //for (int i = 0; i < 4; ++i)
+  //  Pad::ResetRumble(i);
 
   Keyboard::Shutdown();
   Pad::Shutdown();
@@ -595,10 +600,12 @@ void retro_set_input_state(retro_input_state_t cb)
 
 void retro_set_controller_port_device(unsigned port, unsigned device)
 {
-  auto& system = Core::System::GetInstance();
+  /*auto& system = Core::System::GetInstance();
   bool altGCPorts = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII);
 
-  if (((!system.IsWii() || !altGCPorts) && port > 3) || port > 7)
+  SCoreStartupParameter& StartUp = SConfig::GetInstance().m_LocalCoreStartupParameter;
+
+  if (((!StartUp.bWii || !altGCPorts) && port > 3) || port > 7)
     return;
 
   Libretro::Input::input_types[port] = device;
@@ -606,10 +613,10 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 
   if (device == RETRO_DEVICE_NONE)
   {
-    if (system.IsWii() && port < 4)
+    if (StartUp.bWii && port < 4)
       WiimoteCommon::OnSourceChanged(port, WiimoteSource::None);
 
-    if (!system.IsWii() || !altGCPorts)
+    if (!StartUp.bWii || !altGCPorts)
     {
       Config::SetBaseOrCurrent(Config::GetInfoForSIDevice(port), SerialInterface::SIDEVICE_NONE);
       si.ChangeDevice(Config::Get(Config::GetInfoForSIDevice(port)), port);
@@ -620,7 +627,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
       si.ChangeDevice(Config::Get(Config::GetInfoForSIDevice(port - 4)), port - 4);
     }
   }
-  else if (!system.IsWii() || device == RETRO_DEVICE_GC_ON_WII || port > 3)
+  else if (!StartUp.bWii || device == RETRO_DEVICE_GC_ON_WII || port > 3)
   {
     retro_set_controller_port_device_gc(port, device);
   }
@@ -631,7 +638,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
 
   std::vector<retro_input_descriptor> all_descs;
 
-  int port_max = (system.IsWii() && altGCPorts) ? 8 : 4;
+  int port_max = (StartUp.bWii) && altGCPorts) ? 8 : 4;
 
   for (int i = 0; i < port_max; i++)
   {
@@ -664,7 +671,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
       break;
 
     default:
-      if (!system.IsWii() || i > 3)
+      if (!StartUp.bWii || i > 3)
       {
         desc = Libretro::Input::descGC;
       }
@@ -688,7 +695,7 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
   if(!Libretro::environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, &all_descs[0]))
   {
     WARN_LOG_FMT(COMMON, "RetroArch does not support RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS.");
-  }
+  }*/
 }
 
 void retro_set_controller_port_device_gc(unsigned port, unsigned device)
@@ -701,7 +708,7 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
   std::string devKeyboard = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_KEYBOARD);
   std::string devLightgun = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_LIGHTGUN);
 #endif
-  auto& si = Core::System::GetInstance().GetSerialInterface();
+  /*auto& si = Core::System::GetInstance().GetSerialInterface();
 
   if (device == RETRO_DEVICE_GC_ON_WII) // Disconnect Wii device if we're using GC controller as device type to avoid conflict
     WiimoteCommon::OnSourceChanged(port, WiimoteSource::None);
@@ -1010,5 +1017,5 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
   }
 
   wm->UpdateReferences(g_controller_interface);
-  ::Wiimote::GetConfig()->SaveConfig();
+  ::Wiimote::GetConfig()->SaveConfig();*/
 }

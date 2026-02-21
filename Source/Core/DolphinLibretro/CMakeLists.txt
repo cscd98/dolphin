@@ -4,7 +4,7 @@ add_library(dolphin_libretro SHARED
   Boot.cpp
   Host.cpp
   Input.cpp
-  Log.cpp
+ # Log.cpp
   Main.cpp
   Video.cpp
 )
@@ -85,3 +85,5 @@ endif()
 if(MINGW OR LIBRETRO_STATIC OR WEBOS)
 	target_link_options(dolphin_libretro PRIVATE -static-libgcc -static-libstdc++)
 endif()
+
+target_link_libraries(dolphin_libretro PRIVATE fmt::fmt)

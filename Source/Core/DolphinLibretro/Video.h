@@ -3,10 +3,10 @@
 #include <libretro.h>
 #include "DolphinLibretro/Common/Globals.h"
 #include "DolphinLibretro/Common/Options.h"
-#include "VideoBackends/Null/NullGfx.h"
-#include "VideoBackends/Software/SWOGLWindow.h"
-#include "VideoBackends/Software/SWGfx.h"
-#include "VideoBackends/Software/SWTexture.h"
+//#include "VideoBackends/Null/NullGfx.h"
+//#include "VideoBackends/Software/SWOGLWindow.h"
+//#include "VideoBackends/Software/SWGfx.h"
+//#include "VideoBackends/Software/SWTexture.h"
 #include "VideoCommon/VideoBackendBase.h"
 #include "VideoCommon/VideoConfig.h"
 #include "Common/Logging/Log.h"
@@ -42,7 +42,7 @@ bool SetHWRender(retro_hw_context_type type, const int version_major = -1, const
 void ContextReset(void);
 void ContextDestroy(void);
 
-class SWGfx : public SW::SWGfx
+/*class SWGfx : public SW::SWGfx
 {
 public:
   SWGfx()
@@ -73,7 +73,7 @@ public:
     video_cb(NULL, 512, 512, 512 * 4);
     UpdateActiveConfig();
   }
-};
+};*/
 
 #ifdef _WIN32
 class DX11SwapChain : public DX11::SwapChain

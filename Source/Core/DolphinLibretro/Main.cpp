@@ -7,13 +7,13 @@
 #include "AudioCommon/AudioCommon.h"
 #include "Common/ChunkFile.h"
 #include "Common/Event.h"
-#include "Common/GL/GLContext.h"
+//#include "Common/GL/GLContext.h"
 #include "Common/Logging/LogManager.h"
 #include "Common/Thread.h"
-#include "Common/Version.h"
+//#include "Common/Version.h"
 #include "Core/BootManager.h"
-#include "Core/Config/MainSettings.h"
-#include "Core/Config/SYSCONFSettings.h"
+//#include "Core/Config/MainSettings.h"
+//#include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/CPU.h"
@@ -22,21 +22,23 @@
 #include "Core/HW/VideoInterface.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/State.h"
-#include "Core/System.h"
+//#include "Core/System.h"
 #include "DolphinLibretro/Audio.h"
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
-#include "VideoBackends/OGL/OGLTexture.h"
-#include "VideoBackends/OGL/OGLGfx.h"
+//#include "VideoBackends/OGL/OGLTexture.h"
+//#include "VideoBackends/OGL/OGLGfx.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
-#include "VideoCommon/TextureConfig.h"
+//#include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
-#include "VideoCommon/Widescreen.h"
+//#include "VideoCommon/Widescreen.h"
 #include "Core/Boot/Boot.h"
 #include "Core/HW/CPU.h"
+#include "Core/CoreParameter.h"
+#include "Core/ConfigManager.h"
 
 #ifdef PERF_TEST
 static struct retro_perf_callback perf_cb;
@@ -92,7 +94,7 @@ void retro_get_system_info(retro_system_info* info)
 {
   info->need_fullpath = true;
   info->valid_extensions = "elf|dol|gcm|iso|tgc|wbfs|ciso|gcz|wad|wia|rvz|m3u";
-  info->library_version = Common::GetScmDescStr().c_str();
+  //info->library_version = Common::GetScmDescStr().c_str();
   info->library_name = "dolphin-emu";
   info->block_extract = true;
 }
@@ -115,10 +117,9 @@ void retro_get_system_av_info(retro_system_av_info* info)
   info->geometry.max_width   = info->geometry.base_width;
   info->geometry.max_height  = info->geometry.base_height;
 
-  if (g_widescreen)
-    Libretro::widescreen = g_widescreen->IsGameWidescreen() || g_Config.bWidescreenHack;
-  else if (Core::System::GetInstance().IsWii())
-    Libretro::widescreen = Config::Get(Config::SYSCONF_WIDESCREEN);
+  SCoreStartupParameter& StartUp = SConfig::GetInstance().m_LocalCoreStartupParameter;
+
+  Libretro::widescreen = g_Config.bWidescreenHack;
 
   info->geometry.aspect_ratio = Libretro::widescreen ? 16.0 / 9.0 : 4.0 / 3.0;
   info->timing.fps = (retro_get_region() == RETRO_REGION_NTSC) ? (60.0f / 1.001f) : 50.0f;
@@ -127,7 +128,7 @@ void retro_get_system_av_info(retro_system_av_info* info)
 
 void retro_reset(void)
 {
-  Core::System::GetInstance().GetProcessorInterface().ResetButton_Tap();
+  //Core::System::GetInstance().GetProcessorInterface().ResetButton_Tap();
 }
 
 void retro_run(void)
@@ -135,17 +136,17 @@ void retro_run(void)
   Libretro::Options::CheckForUpdatedVariables();
   Libretro::FrameTiming::CheckForFastForwarding();
 #if defined(_DEBUG)
-  Common::Log::LogManager::GetInstance()->SetConfigLogLevel(Common::Log::LogLevel::LDEBUG);
+  //Common::Log::LogManager::GetInstance()->SetConfigLogLevel(Common::Log::LogLevel::LDEBUG);
 #else
-  Common::Log::LogManager::GetInstance()->SetConfigLogLevel(
+  /*Common::Log::LogManager::GetInstance()->SetConfigLogLevel(
     static_cast<Common::Log::LogLevel>(
         Libretro::Options::GetCached<int>(
-            Libretro::Options::main_interface::LOG_LEVEL, static_cast<int>(Common::Log::LogLevel::LINFO))));
+            Libretro::Options::main_interface::LOG_LEVEL, static_cast<int>(Common::Log::LogLevel::LINFO))));*/
 #endif
   double cpuClock = Libretro::Options::GetCached<double>(
     Libretro::Options::core::CPU_CLOCK_RATE);
-  Config::SetCurrent(Config::MAIN_OVERCLOCK, cpuClock);
-  Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, cpuClock != 1.0);
+  //Config::SetCurrent(Config::MAIN_OVERCLOCK, cpuClock);
+  //Config::SetCurrent(Config::MAIN_OVERCLOCK_ENABLE, cpuClock != 1.0);
   g_Config.bWidescreenHack = Libretro::Options::GetCached<bool>(
     Libretro::Options::gfx_settings::WIDESCREEN_HACK);
 
@@ -159,28 +160,28 @@ void retro_run(void)
 
   Libretro::Input::Update();
 
-  Core::System& system = Core::System::GetInstance();
+  //Core::System& system = Core::System::GetInstance();
 
-  if (Core::GetState(Core::System::GetInstance()) == Core::State::Starting &&
-      !Libretro::g_emuthread_launched)
+  //if (Core::GetState(Core::System::GetInstance()) == Core::State::Starting &&
+      if(!Libretro::g_emuthread_launched)
   {
-    WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
-    if (system.IsDualCoreMode())
-    {
-      Core::s_emu_thread = std::thread(Core::EmuThread,
-        std::ref(Core::System::GetInstance()), std::move(Core::g_boot_params), wsi);
+    //WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+    //if (system.IsDualCoreMode())
+    //{
+      //Core::s_emu_thread = std::thread(Core::EmuThread,
+      //  std::ref(Core::System::GetInstance()), std::move(Core::g_boot_params), wsi);
 
       // Wait until CPU thread has reached Run()
-      auto& cpu_manager = Core::System::GetInstance().GetCPU();
-      while (!cpu_manager.HasCPURunStateBeenReached())
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    else
-      Core::EmuThread(Core::System::GetInstance(), std::move(Core::g_boot_params), wsi);
+      //auto& cpu_manager = Core::System::GetInstance().GetCPU();
+      //while (!cpu_manager.HasCPURunStateBeenReached())
+        //std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    //}
+    //else
+      //Core::EmuThread(Core::System::GetInstance(), std::move(Core::g_boot_params), wsi);
 
     Libretro::g_emuthread_launched = true;
 
-    if(Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
+    /*if(Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
     {
       g_gfx.reset();
       g_gfx = std::make_unique<Libretro::Video::SWGfx>();
@@ -189,10 +190,10 @@ void retro_run(void)
     {
       g_gfx.reset();
       g_gfx = std::make_unique<Libretro::Video::NullGfx>();
-    }
+    }*/
 
-    while (!Core::IsRunningOrStarting(Core::System::GetInstance()))
-      Common::SleepCurrentThread(100);
+    //while (!Core::IsRunningOrStarting(Core::System::GetInstance()))
+    //  Common::SleepCurrentThread(100);
   }
 
   if(!Libretro::g_emuthread_launched)
@@ -201,11 +202,12 @@ void retro_run(void)
     return;
   }
 
-  if (g_gfx && Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
+  // TODO set framebuffer
+  /*if (g_gfx && Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
   {
     static_cast<OGL::OGLGfx*>(g_gfx.get())
         ->SetSystemFrameBuffer((GLuint)Libretro::Video::hw_render.get_current_framebuffer());
-  }
+  }*/
 
   if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::EFB_SCALE))
   {
@@ -221,13 +223,13 @@ void retro_run(void)
     Libretro::environ_cb(cmd, &info);
   }
 
-  if (g_widescreen &&
+  /*if (g_widescreen &&
       Libretro::widescreen != (g_widescreen->IsGameWidescreen() || g_Config.bWidescreenHack))
   {
     retro_system_av_info info;
     retro_get_system_av_info(&info);
     Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
-  }
+  }*/
 
   if (Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_MODE) ||
       Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_OFFSET) ||
@@ -238,17 +240,17 @@ void retro_run(void)
     Libretro::Input::ResetControllers();
   }
 
-  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
+  /*if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
   {
     Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
       Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING));
     WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
-  }
+  }*/
 
   RETRO_PERFORMANCE_INIT(dolphin_main_func);
   RETRO_PERFORMANCE_START(dolphin_main_func);
 
-  if (system.IsDualCoreMode())
+  /*if (system.IsDualCoreMode())
   {
     Core::DoFrameStep(system);
     system.GetFifo().RunGpuLoop();
@@ -256,36 +258,36 @@ void retro_run(void)
   else
   {
     system.GetCPU().RunSingleFrame();
-  }
+  }*/
 
   RETRO_PERFORMANCE_STOP(dolphin_main_func);
 
-  if (auto* sound_stream = system.GetSoundStream())
+  /*if (auto* sound_stream = system.GetSoundStream())
   {
     auto* libretro_stream = static_cast<Libretro::Audio::Stream*>(sound_stream);
     if (libretro_stream)
     {
       libretro_stream->PushAudioForFrame();
     }
-  }
+  }*/
 }
 
 size_t retro_serialize_size(void)
 {
   size_t size = 0;
 
-  Core::System& system = Core::System::GetInstance();
+  //Core::System& system = Core::System::GetInstance();
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
-  if (system.IsDualCoreMode())
+  //if (system.IsDualCoreMode())
     ar->SetPassthrough(true);
 
-  Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
+  /*Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
     PointerWrap p((u8**)&size, sizeof(size_t), PointerWrap::Mode::Measure);
     State::DoState(Core::System::GetInstance(), p);
-    }, true);  // wait = true
+    }, true);  // wait = true*/
 
-  if (system.IsDualCoreMode())
+  //if (system.IsDualCoreMode())
     ar->SetPassthrough(false);
 
   return size;
@@ -293,37 +295,37 @@ size_t retro_serialize_size(void)
 
 bool retro_serialize(void* data, size_t size)
 {
-  Core::System& system = Core::System::GetInstance();
+  //Core::System& system = Core::System::GetInstance();
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
-  if (system.IsDualCoreMode())
+ // if (system.IsDualCoreMode())
     ar->SetPassthrough(true);
 
-  Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
+  /*Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
 
     PointerWrap p((u8**)&data, size, PointerWrap::Mode::Write);
     State::DoState(Core::System::GetInstance(), p);
-  }, true);
+  }, true);*/
 
-  if (system.IsDualCoreMode())
+  //if (system.IsDualCoreMode())
     ar->SetPassthrough(false);
 
   return true;
 }
 bool retro_unserialize(const void* data, size_t size)
 {
-  Core::System& system = Core::System::GetInstance();
+ //Core::System& system = Core::System::GetInstance();
   AsyncRequests* ar = AsyncRequests::GetInstance();
 
-  if (system.IsDualCoreMode())
+  //if (system.IsDualCoreMode())
     ar->SetPassthrough(true);
 
-  Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
+  /*Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
     PointerWrap p((u8**)&data, size, PointerWrap::Mode::Read);
     State::DoState(Core::System::GetInstance(), p);
-  }, true);
+  }, true);*/
 
-  if (system.IsDualCoreMode())
+  //if (system.IsDualCoreMode())
     ar->SetPassthrough(false);
 
   return true;
@@ -331,9 +333,12 @@ bool retro_unserialize(const void* data, size_t size)
 
 unsigned retro_get_region(void)
 {
-  if (DiscIO::IsNTSC(SConfig::GetInstance().m_region) ||
-      (Core::System::GetInstance().IsWii() && Config::Get(Config::SYSCONF_PAL60)))
-    return RETRO_REGION_NTSC;
+  SCoreStartupParameter& StartUp = SConfig::GetInstance().m_LocalCoreStartupParameter;
+
+  // TODO
+  /*if (DiscIO::IsNTSC(SConfig::GetInstance().m_region) ||
+      (StartUp.bWii && Config::Get(Config::SYSCONF_PAL60)))
+    return RETRO_REGION_NTSC;*/
 
   return RETRO_REGION_PAL;
 }
@@ -347,7 +352,8 @@ size_t retro_get_memory_size(unsigned id)
 {
   if (id == RETRO_MEMORY_SYSTEM_RAM)
   {
-    return Core::System::GetInstance().GetMemory().GetRamSize();
+    // TODO
+    //return Core::System::GetInstance().GetMemory().GetRamSize();
   }
   return 0;
 }
@@ -356,7 +362,7 @@ void* retro_get_memory_data(unsigned id)
 {
   if (id == RETRO_MEMORY_SYSTEM_RAM)
   {
-    return Core::System::GetInstance().GetMemory().GetRAM();
+    //return Core::System::GetInstance().GetMemory().GetRAM();
   }
   return NULL;
 }

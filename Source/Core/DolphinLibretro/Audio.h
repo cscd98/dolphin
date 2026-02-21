@@ -2,7 +2,7 @@
 #include <atomic>
 #include <condition_variable>
 #include "Core/State.h"
-#include "Core/System.h"
+//#include "Core/System.h"
 #include "AudioCommon/SoundStream.h"
 #include "Common/Options.h"
 
@@ -12,7 +12,7 @@ namespace Audio
 {
 extern retro_audio_sample_batch_t batch_cb;
 static constexpr unsigned int MIN_SAMPLES = 96;
-static constexpr unsigned int MAX_SAMPLES = 1024;
+static constexpr unsigned int MAX_SAMPLES_LR = 1024;
 static constexpr unsigned int DEFAULT_SAMPLE_RATE = 48000;
 static constexpr unsigned int LEGACY_DEFAULT_SAMPLE_RATE = 32000;
 
@@ -25,13 +25,13 @@ unsigned int GetActiveSampleRate();
 class Stream final : public SoundStream
 {
 public:
-  Stream(unsigned int backendSampleRate = DEFAULT_SAMPLE_RATE)
-  : SoundStream(GetActiveSampleRate()) {}
+  Stream(unsigned int backendSampleRate = DEFAULT_SAMPLE_RATE);
+  //: SoundStream(GetActiveSampleRate()) {}
 
-  bool Init() override;
+  bool Init(); // override;
   static bool IsValid();
 
-  bool SetRunning(bool running) override { return true; }
+  //bool SetRunning(bool running) override { return true; }
 
   void PushAudioForFrame();
   void MixAndPush(unsigned int num_samples);
@@ -40,7 +40,7 @@ public:
   void ProcessCallBack() override;
 
 private:
-  s16 m_buffer[MAX_SAMPLES * 2];
+  s16 m_buffer[MAX_SAMPLES_LR * 2];
   std::atomic<bool> m_callback_received{false};
   unsigned m_sample_rate{DEFAULT_SAMPLE_RATE};
 };

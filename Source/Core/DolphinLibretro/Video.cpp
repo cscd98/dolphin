@@ -24,18 +24,18 @@
 #include "VideoBackends/D3D12/D3D12BoundingBox.h"
 #endif
 
-#include "Common/GL/GLContext.h"
-#include "Common/GL/GLUtil.h"
+//#include "Common/GL/GLContext.h"
+//#include "Common/GL/GLUtil.h"
 #include "Common/Logging/Log.h"
-#include "Common/Version.h"
-#include "Core/Config/GraphicsSettings.h"
-#include "Core/Config/MainSettings.h"
+//#include "Common/Version.h"
+//#include "Core/Config/GraphicsSettings.h"
+//#include "Core/Config/MainSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/Host.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
-#include "VideoBackends/OGL/OGLGfx.h"
+//#include "VideoBackends/OGL/OGLGfx.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/VertexLoaderManager.h"
@@ -110,10 +110,10 @@ void Init()
 #endif
   }
   hw_render.context_type = RETRO_HW_CONTEXT_NONE;
-  if (renderer == "Software")
-    Config::SetBase(Config::MAIN_GFX_BACKEND, "Software Renderer");
-  else
-    Config::SetBase(Config::MAIN_GFX_BACKEND, "Null");
+  //if (renderer == "Software")
+  //  Config::SetBase(Config::MAIN_GFX_BACKEND, "Software Renderer");
+  //else
+  // Config::SetBase(Config::MAIN_GFX_BACKEND, "Null");
 }
 
 bool SetHWRender(retro_hw_context_type type, const int version_major, const int version_minor)
@@ -134,7 +134,8 @@ bool SetHWRender(retro_hw_context_type type, const int version_major, const int 
     hw_render.version_minor = (version_minor != -1) ? version_minor : 3;
     if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
     {
-      Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
+      g_Config.backend_info.APIType = API_OPENGL;
+      //Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
       success = true;
     } else {
       WARN_LOG_FMT(VIDEO, "Video - SetHWRender - failed to set hw renderer for OpenGL Core");
@@ -163,7 +164,8 @@ bool SetHWRender(retro_hw_context_type type, const int version_major, const int 
         WARN_LOG_FMT(VIDEO, "Video - SetHWRender - unable to set shared context for {}", api_name);
       }
       INFO_LOG_FMT(VIDEO, "Video - SetHWRender - using {}", api_name);
-      Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
+      g_Config.backend_info.APIType = API_OPENGL;
+      //Config::SetBase(Config::MAIN_GFX_BACKEND, "OGL");
       success = true;
     }
     else
@@ -417,11 +419,12 @@ void ContextReset(void)
 
 bool Video_InitializeBackend()
 {
-  WindowSystemInfo wsi = {};
-  wsi.type = WindowSystemType::Libretro;
-  wsi.render_surface_scale = 1.0f;
+  //WindowSystemInfo wsi = {};
+  //wsi.type = WindowSystemType::Libretro;
+  //wsi.render_surface_scale = 1.0f;
 
-  g_video_backend->PrepareWindow(wsi);
+  //g_video_backend->PrepareWindow(wsi);
+  g_video_backend->Video_Prepare();
 
 #ifdef HAS_VULKAN
   if (hw_render.context_type == RETRO_HW_CONTEXT_VULKAN)
@@ -492,7 +495,8 @@ bool Video_InitializeBackend()
   }
 
   // this calls InitializeGLExtensions, FillBackendInfo and InitializeShared internally
-  return g_video_backend->Initialize(wsi);
+  //return g_video_backend->Initialize(wsi); // TODO
+  return true;
 }
 
 void ContextDestroy(void)
@@ -501,11 +505,12 @@ void ContextDestroy(void)
 
   g_context_status.MarkDestroyed();
 
-  if (g_gfx &&
-      Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
+  /*if (g_gfx &&
+      g_Config.backend_info.APIType == API_OPENGL)
+      //Config::Get(Config::MAIN_GFX_BACKEND) == "OGL")
   {
     static_cast<OGL::OGLGfx*>(g_gfx.get())->SetSystemFrameBuffer(0);
-  }
+  }*/
 
   if (g_video_backend)
   {

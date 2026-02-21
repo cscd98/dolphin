@@ -26,6 +26,16 @@ void Host_JitCacheInvalidation() {}
 void Host_JitProfileDataWiped() {}
 bool Host_TASInputHasFocus() { return false; }
 
+void Host_RefreshDSPDebuggerWindow() {}
+void Host_Message(int) {}
+void Host_UpdateMainFrame() {}
+bool Host_UIHasFocus() { return false; }
+void* Host_GetRenderHandle() { return nullptr; }
+void Host_NotifyMapLoaded() {}
+void Host_SetWiiMoteConnectionState(int _State) {}
+void Host_ConnectWiimote(int wm_idx, bool connect) {}
+void Host_ShowVideoConfig(void*, const std::string&, const std::string&) {}
+
 //std::unique_ptr<GBAHostInterface> Host_CreateGBAHost(std::weak_ptr<HW::GBA::Core>)
 //{
 //    return nullptr;

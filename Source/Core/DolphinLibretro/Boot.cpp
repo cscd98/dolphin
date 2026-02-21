@@ -95,7 +95,7 @@ bool retro_load_game(const struct retro_game_info* game)
   UICommon::SetUserDirectory(user_dir);
   UICommon::CreateDirectories();
   UICommon::Init();
-  Libretro::Log::Init();
+  //Libretro::Log::Init();
   //Discord::SetDiscordPresenceEnabled(false);
   //Common::SetEnableAlert(false);
  // Common::SetAbortOnPanicAlert(false);
@@ -463,7 +463,7 @@ void retro_unload_game(void)
   // Rest of shutdown
   g_context_status.MarkUnitialized();
   Libretro::Input::Shutdown();
-  Libretro::Log::Shutdown();
+  //Libretro::Log::Shutdown();
   //UICommon::ShutdownControllers();
   UICommon::Shutdown();
 }

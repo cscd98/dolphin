@@ -13,6 +13,3 @@ target_include_directories(dolphin_libretro_common PUBLIC
 target_include_directories(common PUBLIC
   ${LIBRETRO_INCLUDE_DIR}
 )
-
-# needed for windows cmake compile
-target_link_libraries(dolphin_libretro_common fmt)

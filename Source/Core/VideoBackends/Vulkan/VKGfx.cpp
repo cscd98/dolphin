@@ -223,24 +223,6 @@ bool VKGfx::BindBackbuffer(const ClearColor& clear_color)
 
   g_command_buffer_mgr->WaitForWorkerThreadIdle();
 
-#ifdef __LIBRETRO__
-  // During fast-forward, skip most frame presentations to reduce swap chain load
-  // this is a temp HACK until we can properly implement frame skipping
-  if (VideoCommon::g_is_fast_forwarding)
-  {
-    static int frame_skip_counter = 0;
-    frame_skip_counter++;
-
-    // Only present every x frame during fast-forward
-    if (frame_skip_counter < 12)
-    {
-      return false;
-    }
-
-    frame_skip_counter = 0;
-  }
-#endif
-
   // Handle host window resizes.
   CheckForSurfaceChange();
   CheckForSurfaceResize();

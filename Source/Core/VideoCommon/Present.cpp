@@ -33,7 +33,6 @@ std::unique_ptr<VideoCommon::Presenter> g_presenter;
 namespace VideoCommon
 {
 #ifdef __LIBRETRO__
-bool g_is_fast_forwarding{false};
 bool g_is_duplicate_frame{false};
 #endif
 // Stretches the native/internal analog resolution aspect ratio from ~4:3 to ~16:9
@@ -928,12 +927,7 @@ void Presenter::Present(PresentInfo* present_info)
       present_info->present_time_accuracy = PresentInfo::PresentTimeAccuracy::PresentInProgress;
     }
 
-#ifdef __LIBRETRO__
-    if ((!g_is_fast_forwarding) || (g_is_fast_forwarding && backbuffer_bound))
-      g_gfx->PresentBackbuffer();
-#else
     g_gfx->PresentBackbuffer();
-#endif
   }
 
   if (m_xfb_entry)

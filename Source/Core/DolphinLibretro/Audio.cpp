@@ -2,6 +2,7 @@
 #include "Audio.h"
 #include "Common/Logging/Log.h"
 #include "Common/Thread.h"
+#include "Core/Config/MainSettings.h"
 #include "AudioCommon/AudioCommon.h"
 #include "VideoCommon/Present.h"
 #include "DolphinLibretro/Common/Globals.h"
@@ -17,6 +18,7 @@ static std::atomic<unsigned> g_buf_occupancy{0};
 static std::atomic<bool> g_buf_underrun{false};
 static int g_use_call_back_audio{0};
 static bool g_audio_state_cb{false};
+static bool g_is_fast_forwarding{false};
 
 enum CallBackMode
 {
@@ -344,7 +346,7 @@ namespace FrameTiming
 
   bool IsFastForwarding()
   {
-    return VideoCommon::g_is_fast_forwarding;
+    return Libretro::Audio::g_is_fast_forwarding;
   }
 
   void CheckForFastForwarding()
@@ -357,12 +359,33 @@ namespace FrameTiming
     // Query the fast-forward state from RetroArch
     if (Libretro::environ_cb(RETRO_ENVIRONMENT_GET_FASTFORWARDING, &is_fast_forwarding))
     {
-      VideoCommon::g_is_fast_forwarding = is_fast_forwarding;
+      Libretro::Audio::g_is_fast_forwarding = is_fast_forwarding;
+
+      if (is_fast_forwarding)
+      {
+        if (!Config::Get(Config::MAIN_AUDIO_MUTED) &&
+            Config::Get(Config::MAIN_AUDIO_MUTE_ON_DISABLED_SPEED_LIMIT))
+        {
+          Config::SetCurrent(Config::MAIN_AUDIO_MUTED, true);
+          AudioCommon::UpdateSoundStream(Core::System::GetInstance());
+        }
+      }
+      else
+      {
+        if (Config::Get(Config::MAIN_AUDIO_MUTED) &&
+                Config::GetActiveLayerForConfig(Config::MAIN_AUDIO_MUTED) ==
+                    Config::LayerType::CurrentRun)
+        {
+          Config::DeleteKey(Config::LayerType::CurrentRun, Config::MAIN_AUDIO_MUTED);
+          AudioCommon::UpdateSoundStream(Core::System::GetInstance());
+        }
+      }
+
       return;
     }
 
     // Environment call not supported
-    VideoCommon::g_is_fast_forwarding = false;
+    Libretro::Audio::g_is_fast_forwarding = false;
   }
 
   void ThrottleFrame()

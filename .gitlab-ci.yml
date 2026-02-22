@@ -58,7 +58,7 @@ libretro-build-windows-x64:
   extends:
     - .libretro-windows-cmake-x86_64
     - .core-defs
-  image: $CI_SERVER_HOST:5050/libretro-infrastructure/libretro-build-mxe-win-cross-cores:mingw12
+  image: $CI_SERVER_HOST:5050/libretro-infrastructure/libretro-build-mxe-win-cross-cores:gcc12
   variables:
     EXTRA_PATH: ../../Binary/x64
   before_script:

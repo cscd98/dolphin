@@ -59,7 +59,8 @@ static bool InitWindowsMemoryFunctions(WindowsMemoryFunctions* functions)
   void* const ptr_IsApiSetImplemented = kernelBase.GetSymbolAddress("IsApiSetImplemented");
   if (!ptr_IsApiSetImplemented)
     return false;
-  if (!reinterpret_cast<PIsApiSetImplemented>(ptr_IsApiSetImplemented)("api-ms-win-core-memory-l1-1-6"))
+  if (!reinterpret_cast<PIsApiSetImplemented>(ptr_IsApiSetImplemented)(
+          "api-ms-win-core-memory-l1-1-6"))
     return false;
 
   functions->m_api_ms_win_core_memory_l1_1_6_handle.Open("api-ms-win-core-memory-l1-1-6.dll");
@@ -156,9 +157,10 @@ u8* MemArena::ReserveMemoryRegion(size_t memory_size)
   u8* base;
   if (m_memory_functions.m_api_ms_win_core_memory_l1_1_6_handle.IsOpen())
   {
-    base = static_cast<u8*>(reinterpret_cast<PVirtualAlloc2>(m_memory_functions.m_address_VirtualAlloc2)(
-        nullptr, nullptr, memory_size, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS,
-        nullptr, 0));
+    base = static_cast<u8*>(reinterpret_cast<PVirtualAlloc2>(
+        m_memory_functions.m_address_VirtualAlloc2)(nullptr, nullptr, memory_size,
+                                                    MEM_RESERVE | MEM_RESERVE_PLACEHOLDER,
+                                                    PAGE_NOACCESS, nullptr, 0));
     if (base)
     {
       m_reserved_region = base;
@@ -318,8 +320,10 @@ WindowsMemoryRegion* MemArena::EnsureSplitRegionForMapping(void* start_address, 
   }
 }
 
-void* MemArena::MapInMemoryRegion(s64 offset, size_t size, void* base)
+void* MemArena::MapInMemoryRegion(s64 offset, size_t size, void* base, bool writeable)
 {
+  void* result;
+
   if (m_memory_functions.m_api_ms_win_core_memory_l1_1_6_handle.IsOpen())
   {
     WindowsMemoryRegion* const region = EnsureSplitRegionForMapping(base, size);
@@ -329,10 +333,10 @@ void* MemArena::MapInMemoryRegion(s64 offset, size_t size, void* base)
       return nullptr;
     }
 
-    void* rv = reinterpret_cast<PMapViewOfFile3>(m_memory_functions.m_address_MapViewOfFile3)(
+    result = reinterpret_cast<PMapViewOfFile3>(m_memory_functions.m_address_MapViewOfFile3)(
         m_memory_handle, nullptr, base, offset, size, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE,
         nullptr, 0);
-    if (rv)
+    if (result)
     {
       region->m_is_mapped = true;
     }
@@ -342,11 +346,37 @@ void* MemArena::MapInMemoryRegion(s64 offset, size_t size, void* base)
 
       // revert the split, if any
       JoinRegionsAfterUnmap(base, size);
+
+      return nullptr;
     }
-    return rv;
+  }
+  else
+  {
+    result =
+        MapViewOfFileEx(m_memory_handle, FILE_MAP_ALL_ACCESS, 0, (DWORD)((u64)offset), size, base);
+
+    if (!result)
+      return nullptr;
   }
 
-  return MapViewOfFileEx(m_memory_handle, FILE_MAP_ALL_ACCESS, 0, (DWORD)((u64)offset), size, base);
+  if (!writeable)
+  {
+    // If we want to use PAGE_READONLY for now while still being able to switch to PAGE_READWRITE
+    // later, we have to call MapViewOfFile with PAGE_READWRITE and then switch to PAGE_READONLY.
+    ChangeMappingProtection(base, size, writeable);
+  }
+
+  return result;
+}
+
+bool MemArena::ChangeMappingProtection(void* view, size_t size, bool writeable)
+{
+  DWORD old_protect;
+  const int retval =
+      VirtualProtect(view, size, writeable ? PAGE_READWRITE : PAGE_READONLY, &old_protect);
+  if (retval == 0)
+    PanicAlertFmt("VirtualProtect failed: {}", GetLastErrorString());
+  return retval != 0;
 }
 
 bool MemArena::JoinRegionsAfterUnmap(void* start_address, size_t size)
@@ -436,6 +466,21 @@ void MemArena::UnmapFromMemoryRegion(void* view, size_t size)
   }
 
   UnmapViewOfFile(view);
+}
+
+size_t MemArena::GetPageSize() const
+{
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+
+  if (!m_memory_functions.m_address_MapViewOfFile3)
+  {
+    // In this case, we can only map pages that are 64K aligned.
+    // See https://devblogs.microsoft.com/oldnewthing/20031008-00/?p=42223
+    return std::max<size_t>(si.dwPageSize, 64 * 1024);
+  }
+
+  return si.dwPageSize;
 }
 
 LazyMemoryRegion::LazyMemoryRegion()
@@ -546,9 +591,10 @@ void LazyMemoryRegion::Clear()
     m_writable_block_handles[i] = nullptr;
 
     // map the zero block
-    void* map_result = reinterpret_cast<PMapViewOfFile3>(m_memory_functions.m_address_MapViewOfFile3)(
-        m_zero_block, nullptr, memory + i * BLOCK_SIZE, 0, BLOCK_SIZE, MEM_REPLACE_PLACEHOLDER,
-        PAGE_READONLY, nullptr, 0);
+    void* map_result =
+        reinterpret_cast<PMapViewOfFile3>(m_memory_functions.m_address_MapViewOfFile3)(
+            m_zero_block, nullptr, memory + i * BLOCK_SIZE, 0, BLOCK_SIZE, MEM_REPLACE_PLACEHOLDER,
+            PAGE_READONLY, nullptr, 0);
     if (!map_result)
     {
       PanicAlertFmt("Failed to re-map the zero block: {}", GetLastErrorString());

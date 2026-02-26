@@ -10,8 +10,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <timeapi.h>
-#else
-#include <sys/time.h>
 #endif
 
 #include "Common/CommonTypes.h"

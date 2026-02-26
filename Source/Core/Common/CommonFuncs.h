@@ -3,13 +3,13 @@
 
 #pragma once
 
+#ifdef _WIN32
 #include <optional>
+#endif
 #include <string>
 #ifdef __MINGW32__
 #include <sys/stat.h>
 #endif
-
-#include "Common/CommonTypes.h"
 
 #ifndef _WIN32
 

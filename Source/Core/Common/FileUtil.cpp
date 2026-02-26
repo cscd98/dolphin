@@ -3,28 +3,24 @@
 
 #include "Common/FileUtil.h"
 
-#include <algorithm>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
-#include <fstream>
 #include <limits.h>
 #include <stack>
 #include <string>
-#include <sys/stat.h>
 #include <system_error>
-#include <thread>
 #include <vector>
 
-#include "Common/Assert.h"
-#include "Common/Common.h"
 #include "Common/CommonFuncs.h"
 #include "Common/CommonPaths.h"
 #include "Common/CommonTypes.h"
+#ifdef ANDROID
+#include "Common/Assert.h"
+#endif
 #ifdef __APPLE__
 #include "Common/DynamicLibrary.h"
 #endif
@@ -42,8 +38,6 @@
 #include <share.h>
 #include <shellapi.h>
 #else
-#include <dirent.h>
-#include <errno.h>
 #include <libgen.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -861,6 +855,7 @@ static void RebuildUserDirectories(unsigned int dir_index)
   case D_USER_IDX:
     s_user_paths[D_GCUSER_IDX] = s_user_paths[D_USER_IDX] + GC_USER_DIR DIR_SEP;
     s_user_paths[D_WIIROOT_IDX] = s_user_paths[D_USER_IDX] + WII_USER_DIR DIR_SEP;
+    s_user_paths[D_TRIUSER_IDX] = s_user_paths[D_USER_IDX] + TRI_USER_DIR DIR_SEP;
     s_user_paths[D_CONFIG_IDX] = s_user_paths[D_USER_IDX] + CONFIG_DIR DIR_SEP;
     s_user_paths[D_GAMESETTINGS_IDX] = s_user_paths[D_USER_IDX] + GAMESETTINGS_DIR DIR_SEP;
     s_user_paths[D_MAPS_IDX] = s_user_paths[D_USER_IDX] + MAPS_DIR DIR_SEP;

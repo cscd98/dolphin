@@ -60,7 +60,6 @@ add_library(common
   ENet.h
   EnumFormatter.h
   EnumMap.h
-  EnumUtils.h
   Event.h
   FatFsUtil.cpp
   FatFsUtil.h
@@ -128,7 +127,6 @@ add_library(common
   QoSSession.h
   Random.cpp
   Random.h
-  Result.h
   ScopeGuard.h
   SDCardUtil.cpp
   SDCardUtil.h
@@ -153,11 +151,11 @@ add_library(common
   Timer.h
   TimeUtil.cpp
   TimeUtil.h
+  TransferableSharedMutex.h
   TraversalClient.cpp
   TraversalClient.h
   TraversalProto.h
   TypeUtils.h
-  Unreachable.h
   UPnP.cpp
   UPnP.h
   VariantUtil.h
@@ -183,7 +181,7 @@ PUBLIC
   enet::enet
   fmt::fmt
   MbedTLS::mbedtls
-  minizip-ng::minizip-ng
+  MINIZIP::minizip-ng
   sfml-network
 
 PRIVATE
@@ -405,7 +403,7 @@ if(UNIX AND NOT LIBRETRO)
     )
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/build_info.txt.in"
-    "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/build_info.txt"
+    "${CMAKE_BINARY_DIR}/build_info.txt"
     )
 
   target_link_libraries(common PRIVATE "-INCLUDE:enableCompatPatches")

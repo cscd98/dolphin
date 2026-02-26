@@ -14,7 +14,6 @@
 #else
 #include <sys/select.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #endif
 
 #include "Common/BitUtils.h"
@@ -22,7 +21,6 @@
 #include "Common/MsgHandler.h"
 #include "Common/Network.h"
 #include "Common/ScopeGuard.h"
-#include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/EXI/EXI_DeviceEthernet.h"
 
 namespace

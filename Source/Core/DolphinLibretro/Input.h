@@ -10,6 +10,7 @@ namespace Input
 static retro_sensor_interface sensor_interface = {};
 void Init(const WindowSystemInfo& wsi);
 void InitStage2();
+void InitSensors();
 void Update();
 void Shutdown();
 void ResetControllers();
@@ -50,7 +51,8 @@ public:
     }
 
     // normalize to ±1 g
-    return value / 9.8f;
+    // return value / 9.8f;
+    return value;
   }
 
 private:

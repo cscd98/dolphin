@@ -60,6 +60,7 @@ static struct retro_rumble_interface rumble{};
 static const std::string source = "Libretro";
 static unsigned input_types[8];
 static bool g_init_wiimotes = false;
+static bool s_sensor_init_pending = false;
 
 static struct retro_input_descriptor descGC[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Left"},
@@ -481,9 +482,30 @@ void Init(const WindowSystemInfo& wsi)
   int port_max = (Core::System::GetInstance().IsWii() &&
     Libretro::Options::GetCached<int>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII)) ? 8 : 4;
   for (int i = 0; i < port_max; i++)
+    Libretro::Input::AddDevicesForPort(i);
+
+  g_init_wiimotes = true;
+  s_sensor_init_pending = true;
+
+  Wiimote::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
+}
+
+void InitSensors()
+{
+  if (!s_sensor_init_pending)
+    return;
+
+  int port_max = (Core::System::GetInstance().IsWii() &&
+    Libretro::Options::GetCached<int>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII)) ? 8 : 4;
+
+  for (int i = 0; i < port_max; i++)
   {
     if (sensor_interface.set_sensor_state)
     {
+      float test = sensor_interface.get_sensor_input(i, RETRO_SENSOR_ACCELEROMETER_X);
+      printf("Port %d pre-enable accel_x=%f fd_check=%f\n", i, test, test);
+      fflush(stdout);
+
       bool accelOK = sensor_interface.set_sensor_state(i, RETRO_SENSOR_ACCELEROMETER_ENABLE, 60);
       bool gyroOK = sensor_interface.set_sensor_state(i, RETRO_SENSOR_GYROSCOPE_ENABLE, 60);
 
@@ -491,11 +513,9 @@ void Init(const WindowSystemInfo& wsi)
       printf("Sensor interface: Port: %d ACCELEROMETER: %d GYROSCOPE: %d\n", i, accelOK, gyroOK);
       fflush(stdout);
     }
-    Libretro::Input::AddDevicesForPort(i);
   }
 
-  g_init_wiimotes = true;
-  Wiimote::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
+  s_sensor_init_pending = false;
 }
 
 void InitStage2()

@@ -282,14 +282,20 @@ void retro_run(void)
     Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
   }
 
-  if (Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_MODE) ||
-      Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_OFFSET) ||
-      Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_YAW) ||
-      Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_PITCH) ||
-      Libretro::Options::IsUpdated(Libretro::Options::sysconf::ENABLE_RUMBLE))
-  {
-    Libretro::Input::ResetControllers();
-  }
+  WiimoteUpdateFlags flags;
+  flags.irMode  = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_MODE);
+  flags.irOffset = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_OFFSET);
+  flags.irYaw = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_YAW);
+  flags.irPitch = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_PITCH);
+  flags.irDeadzone = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_DEADZONE);
+  flags.irModifier = Libretro::Options::IsUpdated(Libretro::Options::wiimote::IR_MODIFIER);
+  flags.swingModifier = Libretro::Options::IsUpdated(Libretro::Options::wiimote::SWING_MODIFIER);
+  flags.swingAngle = Libretro::Options::IsUpdated(Libretro::Options::wiimote::SWING_ANGLE);
+  flags.sideways = Libretro::Options::IsUpdated(Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE);
+  flags.rumble = Libretro::Options::IsUpdated(Libretro::Options::sysconf::ENABLE_RUMBLE);
+
+  if (flags.any())
+    Libretro::Input::ResetControllers(flags);
 
   if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
   {

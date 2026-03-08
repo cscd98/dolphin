@@ -26,7 +26,11 @@ public:
   void Initialize();
   void Shutdown();
 
+#ifdef __LIBRETRO__
+  void Reset(bool isShutdown = false);
+#else
   void Reset();
+#endif
 
   // Request that an asset be reloaded
   void MarkAssetDirty(const CustomAssetLibrary::AssetID& asset_id);

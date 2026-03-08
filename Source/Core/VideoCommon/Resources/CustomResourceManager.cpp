@@ -38,10 +38,18 @@ void CustomResourceManager::Shutdown()
 
   m_asset_cache.Shutdown();
   m_worker_thread.Shutdown();
+#ifdef __LIBRETRO__
+  Reset(true);
+#else
   Reset();
+#endif
 }
 
+#ifdef __LIBRETRO__
+void CustomResourceManager::Reset(bool isShutdown)
+#else
 void CustomResourceManager::Reset()
+#endif
 {
   m_material_resources.clear();
   m_shader_resources.clear();
@@ -55,6 +63,12 @@ void CustomResourceManager::Reset()
 
   m_asset_cache.Reset();
   m_texture_pool.Reset();
+
+#ifdef __LIBRETRO__
+  if (isShutdown)
+    m_worker_thread.Shutdown();
+  else
+#endif
   m_worker_thread.Reset("resource-worker");
 }
 

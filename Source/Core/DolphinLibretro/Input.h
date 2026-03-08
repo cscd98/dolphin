@@ -6,6 +6,28 @@
 // only 4 support sensors, but the array may be upto 8 if connected GC controllers
 #define NUM_CONTROLLERS_FOR_SENSORS 8
 
+struct WiimoteUpdateFlags
+{
+    bool irMode        = false;
+    bool irOffset      = false; // center
+    bool irYaw         = false; // width
+    bool irPitch       = false; // height
+    bool irDeadzone    = false;
+    bool irModifier    = false;
+    bool swingModifier = false;
+    bool swingAngle    = false;
+    bool sideways      = false;
+    bool rumble        = false;
+
+    bool any() const {
+        return irMode || irOffset || irYaw || irPitch ||
+               irDeadzone || irModifier || swingModifier ||
+               swingAngle || sideways || rumble;
+    }
+};
+
+void refresh_all_wiimote_flags(unsigned port, unsigned device);
+
 namespace Libretro
 {
 namespace Input
@@ -24,8 +46,9 @@ void UpdateAccelerometer(unsigned port);
 void UpdateGyro(unsigned port);
 void Update();
 void Shutdown();
-void ResetControllers();
+void ResetControllers(const WiimoteUpdateFlags& f);
 void BluetoothPassthroughBind();
+void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned device);
 } // namespace Input
 } // namespace Libretro
 

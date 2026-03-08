@@ -10,6 +10,9 @@
 #include "DiscIO/Enums.h"
 #include "VideoCommon/VideoConfig.h"
 
+#define MODIFIER_DISABLED_CONTROL "Disabled"
+#define MODIFIER_NO_MODIFIER "None"
+
 namespace Libretro
 {
 extern retro_environment_t environ_cb;
@@ -244,14 +247,27 @@ namespace gfx_hacks {
 }  // namespace gfx_hacks
 
 // ======================================================
-// Wiimote IR
+// Wiimote IR / Gyro / Swing
 // ======================================================
 namespace wiimote {
+  // Controllers
+  constexpr const char* DEFAULT_DEVICE = "dolphin_wiimote_default_device";
+
+  // General and options
+  constexpr const char HOTKEY_SIDEWAYS_TOGGLE[] = "dolphin_hotkey_sideways_toggle";
+
+  // Motion simulation
   constexpr const char IR_MODE[] = "dolphin_ir_mode";
   constexpr const char IR_OFFSET[] = "dolphin_ir_offset";
   constexpr const char IR_YAW[] = "dolphin_ir_yaw";
   constexpr const char IR_PITCH[] = "dolphin_ir_pitch";
-  constexpr const char* DEFAULT_DEVICE = "dolphin_wiimote_default_device";
+  constexpr const char IR_DEADZONE[] = "dolphin_ir_deadzone";
+  constexpr const char IR_MODIFIER[] = "dolphin_ir_modifier";
+  constexpr const char SWING_MODIFIER[] = "dolphin_swing_modifier";
+  constexpr const char SWING_ANGLE[] = "dolphin_swing_angle";
+
+  // preserve settings
+  constexpr const char SAVE_LOAD_SETTINGS[] = "dolphin_save_load_settings";
 }  // namespace wiimote
 }  // namespace Options
 }  // namespace Libretro

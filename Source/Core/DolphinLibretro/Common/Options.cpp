@@ -71,8 +71,8 @@ static const struct retro_core_option_v2_category option_cats[] = {
   },
   {
     CATEGORY_WIIMOTE,
-    "Wiimote IR",
-    "Configure Wiimote infrared pointer settings."
+    "Wiimote IR / Gyro / Swing",
+    "Configure Wiimote infrared pointer, gyro and swing settings."
   },
   { NULL, NULL, NULL }
 };
@@ -1159,6 +1159,32 @@ static struct retro_core_option_v2_definition option_defs[] = {
   },
   #endif
 
+  {
+    Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE,
+    "WiiMote Sideways > Toggle Button",
+    "Sideways Toggle Button",
+    "Button used to toggle sideways mode. Can be disabled.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { MODIFIER_DISABLED_CONTROL, "Disabled" },
+      { "L3",     "L3 (Default)" },
+      { "R3",     nullptr },
+      { "L1",     nullptr },
+      { "R1",     nullptr },
+      { "L2",     nullptr },
+      { "R2",     nullptr },
+      { "A",      nullptr },
+      { "B",      nullptr },
+      { "X",      nullptr },
+      { "Y",      nullptr },
+      { "Start",  nullptr },
+      { "Select", nullptr },
+      { nullptr,  nullptr }
+    },
+    "L3"
+  },
+
   // ========== Wiimote IR ==========
   {
     Libretro::Options::wiimote::IR_MODE,
@@ -1279,6 +1305,114 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "25"
+  },
+  {
+    Libretro::Options::wiimote::IR_DEADZONE,
+    "Wiimote IR > Wiimote IR Deadzone",
+    "IR Deadzone",
+    "Amount of small IR‑cursor movement to ignore (0–50%).",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "0",  "0% (No Deadzone)" },
+      { "1",  nullptr }, { "2",  nullptr }, { "3",  nullptr }, { "4",  nullptr }, { "5",  nullptr },
+      { "6",  nullptr }, { "7",  nullptr }, { "8",  nullptr }, { "9",  nullptr }, { "10", nullptr },
+      { "11", nullptr }, { "12", nullptr }, { "13", nullptr }, { "14", nullptr }, { "15", nullptr },
+      { "16", nullptr }, { "17", nullptr }, { "18", nullptr }, { "19", nullptr }, { "20", nullptr },
+      { "21", nullptr }, { "22", nullptr }, { "23", nullptr }, { "24", nullptr }, { "25", nullptr },
+      { "26", nullptr }, { "27", nullptr }, { "28", nullptr }, { "29", nullptr }, { "30", nullptr },
+      { "31", nullptr }, { "32", nullptr }, { "33", nullptr }, { "34", nullptr }, { "35", nullptr },
+      { "36", nullptr }, { "37", nullptr }, { "38", nullptr }, { "39", nullptr }, { "40", nullptr },
+      { "41", nullptr }, { "42", nullptr }, { "43", nullptr }, { "44", nullptr }, { "45", nullptr },
+      { "46", nullptr }, { "47", nullptr }, { "48", nullptr }, { "49", nullptr }, { "50", nullptr },
+      { nullptr, nullptr }
+    },
+    "0"
+  },
+  {
+    Libretro::Options::wiimote::IR_MODIFIER,
+    "WiiMote IR > Modifier Button",
+    "IR Modifier Button",
+    "Button used as a modifier for IR control. With no modifier selected, IR is always active with right thumbstick.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { MODIFIER_NO_MODIFIER,   "None (Default)" },
+      { "L3",     nullptr },
+      { "R3",     nullptr },
+      { "L1",     nullptr },
+      { "R1",     nullptr },
+      { "L2",     nullptr },
+      { "R2",     nullptr },
+      { "A",      nullptr },
+      { "B",      nullptr },
+      { "X",      nullptr },
+      { "Y",      nullptr },
+      { "Start",  nullptr },
+      { "Select", nullptr },
+      { nullptr,  nullptr }
+    },
+    MODIFIER_NO_MODIFIER
+  },
+  {
+    Libretro::Options::wiimote::SWING_MODIFIER,
+    "WiiMote Swing > Modifier Button",
+    "Swing Modifier Button",
+    "Button to hold while using right thumbstick to activate swing. OFF turns off swing. Selecting none will allow free use of right thumb stick to swing (It will automatically filter out L3).",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { MODIFIER_DISABLED_CONTROL, "Disabled" },
+      { MODIFIER_NO_MODIFIER, "None" },
+      { "L3",     nullptr },
+      { "R3",     nullptr },
+      { "L1",     nullptr },
+      { "R1",     nullptr },
+      { "L2",     nullptr },
+      { "R2",     nullptr },
+      { "A",      nullptr },
+      { "B",      nullptr },
+      { "X",      nullptr },
+      { "Y",      nullptr },
+      { "Start",  nullptr },
+      { "Select", nullptr },
+      { nullptr,  nullptr }
+    },
+    MODIFIER_DISABLED_CONTROL
+  },
+  {
+    Libretro::Options::wiimote::SWING_ANGLE,
+    "Wiimote Swing > Angle",
+    "Swing Angle",
+    "Rotation applied at the extremities of a swing (1-180°).",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "1",   nullptr }, { "5",   nullptr }, { "10",  nullptr }, { "15",  nullptr },
+      { "20",  nullptr }, { "25",  nullptr }, { "30",  nullptr }, { "35",  nullptr },
+      { "40",  nullptr }, { "45",  nullptr }, { "50",  nullptr }, { "55",  nullptr },
+      { "60",  nullptr }, { "65",  nullptr }, { "70",  nullptr }, { "75",  nullptr },
+      { "80",  nullptr }, { "85",  nullptr }, { "90",  "90° (Default)" },
+      { "100", nullptr }, { "110", nullptr }, { "120", nullptr }, { "130", nullptr },
+      { "140", nullptr }, { "150", nullptr }, { "160", nullptr }, { "170", nullptr },
+      { "180", nullptr },
+      { nullptr, nullptr }
+    },
+    "90"
+  },
+  {
+    Libretro::Options::wiimote::SAVE_LOAD_SETTINGS,
+    "Wiimote > Load & Prevent Save Settings",
+    "Load & Prevent Save Settings",
+    "Choose whether to load core settings from GCPad.ini/WiimoteNew.ini and also prevent saving to them. Core options may no longer be reflected correctly in RetroArch interface. Editing ini files incorrectly will likely crash the emulator.",
+    nullptr,
+    CATEGORY_WIIMOTE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
   },
 
   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, {{0}}, nullptr }

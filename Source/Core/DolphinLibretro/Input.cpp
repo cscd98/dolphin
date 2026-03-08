@@ -4,7 +4,9 @@
 #include <libretro.h>
 
 #include "Common/Common.h"
+#include "Common/CommonPaths.h"
 #include "Common/CommonTypes.h"
+#include "Common/FileUtil.h"
 #include "Common/IniFile.h"
 #include "Common/Logging/Log.h"
 #include "Core/Config/MainSettings.h"
@@ -37,6 +39,7 @@
 #include "InputCommon/GCAdapter.h"
 #include "InputCommon/GCPadStatus.h"
 #include "InputCommon/InputConfig.h"
+#include "InputCommon/InputProfile.h"
 
 #define RETRO_DEVICE_WIIMOTE RETRO_DEVICE_JOYPAD
 #define RETRO_DEVICE_WIIMOTE_SW ((2 << 8) | RETRO_DEVICE_JOYPAD)
@@ -65,7 +68,6 @@ static retro_input_state_t input_cb = nullptr;
 static struct retro_rumble_interface rumble{};
 static unsigned input_types[8];
 static bool g_init_wiimotes = false;
-static unsigned s_default_device = RETRO_DEVICE_WIIMOTE;
 static bool s_sensor_init_pending = false;
 static bool sensor_enabled[NUM_CONTROLLERS_FOR_SENSORS][SENSOR_COUNT] = {};
 static int port_max;
@@ -167,7 +169,7 @@ static struct retro_input_descriptor descWiimote[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2, "Shake Wiimote"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "+"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "-"},
-    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
+    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Tilt Left/Right"},
@@ -188,7 +190,7 @@ static struct retro_input_descriptor descWiimoteSideways[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2, "Shake Wiimote"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "+"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "-"},
-    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
+    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Tilt Left/Right"},
@@ -212,7 +214,7 @@ static struct retro_input_descriptor descWiimoteNunchuk[] = {
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L2, "Shake Nunchuk"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START, "1"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT, "2"},
-    {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
+    //{0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3, "Sideways Toggle"},
     {0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3, "Home"},
     {0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X,
     "Nunchuk Stick X"},
@@ -566,8 +568,8 @@ void InitSensors()
   if (!s_sensor_init_pending)
     return;
 
-  // sensors do not apply to GC and neither does default controller
-  if (!Core::System::GetInstance().IsWii())
+  // sensors do not apply to GC, bluetooth passthrough and neither does default controller
+  if (!Core::System::GetInstance().IsWii() || Config::Get(Config::MAIN_BLUETOOTH_PASSTHROUGH_ENABLED))
   {
     s_sensor_init_pending = false;
     return;
@@ -596,7 +598,8 @@ void InitSensors()
   }
 
   s_sensor_init_pending = false;
-  ResetControllers();
+
+  ResetControllers(WiimoteUpdateFlags{});
 }
 
 void Shutdown()
@@ -656,8 +659,16 @@ void UpdateGyro(unsigned port)
     g_gyro[port][i] = sensor_interface.get_sensor_input(port, RETRO_SENSOR_GYROSCOPE_X + i);
 }
 
-void ResetControllers()
+void ResetControllers(const WiimoteUpdateFlags& f)
 {
+  // only update what has changed
+  if (f.any())
+  {
+    for (int port = 0; port < 4; port++)
+      UpdateWiimoteMappings(f, port, input_types[port]);
+    return;
+  }
+
   for (int port = 0; port < port_max; port++)
     retro_set_controller_port_device(port, input_types[port]);
 }
@@ -703,6 +714,186 @@ static std::string GetQualifiedNameSensor(unsigned port)
       static_cast<int>(port),
       std::string("Sensor")
   ).ToString();
+}
+
+// can be called from retro_run, do not reset all settings because one thing changed
+void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned device)
+{
+  if (!f.any() || device == RETRO_DEVICE_REAL_WIIMOTE || device == RETRO_DEVICE_WIIMOTE_CC ||
+    device == RETRO_DEVICE_WIIMOTE_CC_PRO)
+    return;
+
+  auto& system = Core::System::GetInstance();
+  bool altGCPorts = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ALT_GC_PORTS_ON_WII);
+
+  if (((!system.IsWii() || !altGCPorts) && port > 3) || port > 7)
+    return;
+
+  // modifier wrapper
+  auto wrap = [](const std::string& mod, const std::string& expr) {
+    if (mod == MODIFIER_NO_MODIFIER || mod.empty())
+      return expr;                   // no modifier - always active
+    return mod + " & " + expr;       // modifier held - active
+  };
+
+  WiimoteEmu::Wiimote* wm = (WiimoteEmu::Wiimote*)Wiimote::GetConfig()->GetController(port);
+
+  // IR‑related updates
+  if (f.irModifier ||
+      f.irMode ||
+      f.irOffset ||
+      f.irYaw ||
+      f.irPitch ||
+      f.irDeadzone ||
+      f.swingModifier)
+  {
+    ControllerEmu::ControlGroup* wmIR = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Point);
+    const int irMode = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_MODE);
+
+    if (f.irOffset)
+    {
+      const int irCenter = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_OFFSET);
+      static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[1].get())
+        ->SetValue(irCenter); // IR Vertical Offset
+    }
+
+    if (f.irYaw)
+    {
+      const int irWidth = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_YAW);
+      static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[2].get())
+        ->SetValue(irWidth);  // IR Total Yaw
+    }
+
+    if (f.irPitch)
+    {
+      const int irHeight = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_PITCH);
+      static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[3].get())
+        ->SetValue(irHeight); // IR Total Pitch
+    }
+
+
+    if (f.irMode || f.irModifier || f.swingModifier)
+    {
+      std::string devAnalog = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_ANALOG);
+      std::string devPointer = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_POINTER);
+
+      if (irMode == 0 || irMode == 1)
+      {
+        // Set right stick to control the IR
+        std::string irMod = Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::IR_MODIFIER);
+        wmIR->SetControlExpression(0, wrap(irMod, "`" + devAnalog + ":Y1-`")); // Up
+        wmIR->SetControlExpression(1, wrap(irMod, "`" + devAnalog + ":Y1+`")); // Down
+        wmIR->SetControlExpression(2, wrap(irMod, "`" + devAnalog + ":X1-`")); // Left
+        wmIR->SetControlExpression(3, wrap(irMod, "`" + devAnalog + ":X1+`")); // Right
+
+        static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[4].get())
+          ->SetValue(irMode == 0);                                    // Relative input
+        static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[5].get())
+          ->SetValue(true);                                           // Auto hide
+
+        // Swing‑related updates
+        ControllerEmu::ControlGroup* wmSwing = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Swing);
+
+        // modifier controls swing plus analog
+        std::string swingModifier = Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::SWING_MODIFIER);
+
+        if (swingModifier != MODIFIER_DISABLED_CONTROL)
+        {
+          // we don't want whatever the irMod is set to (e.g. L3) to interfere with swinging
+          if (swingModifier == MODIFIER_NO_MODIFIER && irMod != swingModifier)
+            swingModifier = "!" + irMod;
+
+          wmSwing->SetControlExpression(0, wrap(swingModifier, "`" + devAnalog + ":Y1-`"));  // Up
+          wmSwing->SetControlExpression(1, wrap(swingModifier, "`" + devAnalog + ":Y1+`"));  // Down
+          wmSwing->SetControlExpression(2, wrap(swingModifier, "`" + devAnalog + ":X1-`"));  // Left
+          wmSwing->SetControlExpression(3, wrap(swingModifier, "`" + devAnalog + ":X1+`"));  // Right
+        }
+        else
+        {
+          wmSwing->SetControlExpression(0, "");
+          wmSwing->SetControlExpression(1, "");
+          wmSwing->SetControlExpression(2, "");
+          wmSwing->SetControlExpression(3, "");
+        }
+      }
+      else
+      {
+        // Mouse controls IR
+        wmIR->SetControlExpression(0, "`" + devPointer + ":Y0-`");    // Up
+        wmIR->SetControlExpression(1, "`" + devPointer + ":Y0+`");    // Down
+        wmIR->SetControlExpression(2, "`" + devPointer + ":X0-`");    // Left
+        wmIR->SetControlExpression(3, "`" + devPointer + ":X0+`");    // Right
+        static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[4].get())
+          ->SetValue(false);                                          // Relative input
+        static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[5].get())
+          ->SetValue(false);                                          // Auto hide
+      }
+
+      if (f.irMode && device == RETRO_DEVICE_WIIMOTE_NC)
+      {
+        // mouse
+        if (irMode != 0 && irMode != 1)
+        {
+          ControllerEmu::ControlGroup* wmTilt = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Tilt);
+          wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y1-`");  // Forward
+          wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y1+`");  // Backward
+          wmTilt->SetControlExpression(2, "`" + devAnalog + ":X1-`");  // Left
+          wmTilt->SetControlExpression(3, "`" + devAnalog + ":X1+`");  // Right
+        }
+      }
+    }
+
+    if (f.irDeadzone)
+    {
+      const int irDeadzone = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_DEADZONE);
+      static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[0].get())
+        ->SetValue(irDeadzone); // IR DeadZone
+    }
+  }
+
+  if (f.swingAngle)
+  {
+    ControllerEmu::ControlGroup* wmSwing = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Swing);
+
+    const int swingAngle = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::SWING_ANGLE);
+    static_cast<ControllerEmu::NumericSetting<double>*>(wmSwing->numeric_settings[0].get())
+      ->SetValue(swingAngle);                                           // Swing/Angle
+  }
+
+  // Sideways toggle
+  if (f.sideways)
+  {
+    ControllerEmu::ControlGroup* wmHotkeys = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Hotkeys);
+    std::string sidewaysToggle =
+      Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE);
+
+    wmHotkeys->SetControlExpression(0,
+      sidewaysToggle != MODIFIER_DISABLED_CONTROL ? sidewaysToggle : "");  // Sideways Toggle (L3 default)
+
+#if 0
+    wmHotkeys->SetControlExpression(1, "");  // Upright Toggle
+    wmHotkeys->SetControlExpression(2, "");  // Sideways Hold
+    wmHotkeys->SetControlExpression(3, "");  // Upright Hold
+#endif
+  }
+
+  // Rumble
+  if (f.rumble)
+  {
+    ControllerEmu::ControlGroup* wmRumble = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Rumble);
+    bool enableRumble = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ENABLE_RUMBLE);
+    if (enableRumble)
+      wmRumble->SetControlExpression(0, "Rumble");
+  }
+
+  if (f.any())
+  {
+    wm->UpdateReferences(g_controller_interface);
+
+    bool saveOrLoad = Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::SAVE_LOAD_SETTINGS);
+    if (!saveOrLoad)
+      ::Wiimote::GetConfig()->SaveConfig();
+  }
 }
 
 }  // namespace Input
@@ -819,6 +1010,92 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
   }
 }
 
+void refresh_all_wiimote_flags(unsigned port, unsigned device)
+{
+  WiimoteUpdateFlags f;
+  f.sideways     = true;
+  f.irModifier   = true;
+  f.swingModifier = true;
+  f.irMode       = true;
+  f.irOffset     = true;
+  f.irYaw        = true;
+  f.irPitch      = true;
+  f.irDeadzone   = true;
+  f.swingAngle   = true;
+  f.rumble       = true;
+  Libretro::Input::UpdateWiimoteMappings(f, port, device);
+}
+
+// Mirror InputConfig::LoadConfig() for a single port.
+//  1) game-specific input profile (game ini [Controls] WiimoteProfile{n}),
+//  2) WiimoteNew.ini [Wiimote{n}] section,
+// Returns the configured Wiimote pointer if a saved config was found and loaded,
+// nullptr if the caller should apply hard-coded defaults instead.
+// SetDefaultDevice is always called before UpdateReferences so profiles without
+// a Device= line still bind to the correct libretro joypad.
+static WiimoteEmu::Wiimote* load_saved_controller_config(unsigned port, unsigned device)
+{
+  bool saveOrLoad = Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::SAVE_LOAD_SETTINGS);
+  if (!saveOrLoad)
+    return nullptr;
+
+  WiimoteEmu::Wiimote* wm =
+      (WiimoteEmu::Wiimote*)Wiimote::GetConfig()->GetController(port);
+
+  // Rebuild devJoypad here so SetDefaultDevice is always called inside this
+  // function, before UpdateReferences, regardless of which load path fires.
+  const std::string devJoypad = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_JOYPAD);
+
+  const std::string profile_directory = ::Wiimote::GetConfig()->GetUserProfileDirectoryPath();
+  const std::string profile_key =
+      fmt::format("{}Profile{}", ::Wiimote::GetConfig()->GetProfileKey(), port + 1);
+
+  // Step 1: game ini [Controls] WiimoteProfile{n} -> Profiles/Wiimote/<name>.ini [Profile]
+  // LoadGameIni() already resolves the priority chain: S.ini, SOE.ini, SOUE01.ini, SOUE01r{n}.ini
+  Common::IniFile game_ini = SConfig::GetInstance().LoadGameIni();
+  const auto* control_section = game_ini.GetOrCreateSection("Controls");
+  std::string profile_setting;
+  if (control_section->Get(profile_key, &profile_setting))
+  {
+    const auto profiles = InputProfile::GetProfilesFromSetting(profile_setting, profile_directory);
+    if (!profiles.empty())
+    {
+      Common::IniFile profile_ini;
+      if (profile_ini.Load(profiles[0]))
+      {
+        Common::IniFile::Section* profile_sec = profile_ini.GetOrCreateSection("Profile");
+        wm->LoadConfig(profile_sec);
+        wm->SetDefaultDevice(devJoypad);
+        wm->UpdateReferences(g_controller_interface);
+        refresh_all_wiimote_flags(port, device);
+        ::Wiimote::GetConfig()->SaveConfig();
+        return wm;  // Per-game profile loaded
+      }
+    }
+  }
+
+  // Step 2: WiimoteNew.ini [Wiimote{n}] - GetSection not GetOrCreateSection so a
+  // missing section doesn't silently bypass the hard-coded defaults in the caller.
+  const std::string wiimote_ini_path =
+      File::GetUserPath(D_CONFIG_IDX) + WIIMOTE_INI_NAME ".ini";
+  Common::IniFile wiimote_new_ini;
+  if (wiimote_new_ini.Load(wiimote_ini_path))
+  {
+    Common::IniFile::Section* wm_sec = wiimote_new_ini.GetSection(wm->GetName());
+    if (wm_sec)
+    {
+      wm->LoadConfig(wm_sec);
+      wm->SetDefaultDevice(devJoypad);
+      wm->UpdateReferences(g_controller_interface);
+      refresh_all_wiimote_flags(port, device);
+      ::Wiimote::GetConfig()->SaveConfig();
+      return wm;  // WiimoteNew.ini loaded
+    }
+  }
+
+  return nullptr;  // nothing found, applies hard-coded defaults
+}
+
 void retro_set_controller_port_device_gc(unsigned port, unsigned device)
 {
   std::string devJoypad = Libretro::Input::GetQualifiedName(port, RETRO_DEVICE_JOYPAD);
@@ -894,7 +1171,10 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
     ->SetValue(true); // Always Connected
 
   gcPad->UpdateReferences(g_controller_interface);
-  Pad::GetConfig()->SaveConfig();
+
+  bool saveOrLoad = Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::SAVE_LOAD_SETTINGS);
+  if (!saveOrLoad)
+    return Pad::GetConfig()->SaveConfig();
 }
 
 void retro_set_controller_port_device_wii(unsigned port, unsigned device)
@@ -922,11 +1202,21 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     si.ChangeDevice(Config::Get(Config::GetInfoForSIDevice(port)), port);
   }
 
-  WiimoteEmu::Wiimote* wm = (WiimoteEmu::Wiimote*)Wiimote::GetConfig()->GetController(port);
+  WiimoteEmu::Wiimote* wm = load_saved_controller_config(port, device);
+
+  // defaults already found, so don't overwrite
+  if (wm)
+    return;
+
+  // nothing found — start fresh and apply hard-coded defaults
+  wm = (WiimoteEmu::Wiimote*)Wiimote::GetConfig()->GetController(port);
+
   // load an empty inifile section, clears everything
   Common::IniFile::Section sec;
   wm->LoadConfig(&sec);
   wm->SetDefaultDevice(devJoypad);
+
+  WiimoteUpdateFlags f;
 
   using namespace WiimoteEmu;
   if (device == RETRO_DEVICE_WIIMOTE_CC || device == RETRO_DEVICE_WIIMOTE_CC_PRO)
@@ -977,26 +1267,14 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
   {
     ControllerEmu::ControlGroup* wmButtons = wm->GetWiimoteGroup(WiimoteGroup::Buttons);
     ControllerEmu::ControlGroup* wmDPad = wm->GetWiimoteGroup(WiimoteGroup::DPad);
-    ControllerEmu::ControlGroup* wmIR = wm->GetWiimoteGroup(WiimoteGroup::Point);
     ControllerEmu::ControlGroup* wmShake = wm->GetWiimoteGroup(WiimoteGroup::Shake);
     ControllerEmu::ControlGroup* wmTilt = wm->GetWiimoteGroup(WiimoteGroup::Tilt);
-#if 0
-    ControllerEmu::ControlGroup* wmSwing = wm->GetWiimoteGroup(WiimoteGroup::Swing);
-#endif
-    ControllerEmu::ControlGroup* wmHotkeys = wm->GetWiimoteGroup(WiimoteGroup::Hotkeys);
-//#endif
 
-    const int irMode = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_MODE);
-    const int irCenter = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_OFFSET);
-    const int irWidth = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_YAW);
-    const int irHeight = Libretro::Options::GetCached<int>(Libretro::Options::wiimote::IR_PITCH);
-
-    static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[1].get())
-      ->SetValue(irCenter); // IR Vertical Offset
-    static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[2].get())
-      ->SetValue(irWidth);  // IR Total Yaw
-    static_cast<ControllerEmu::NumericSetting<double>*>(wmIR->numeric_settings[3].get())
-      ->SetValue(irHeight); // IR Total Pitch
+    f.irOffset = true;
+    f.irYaw = true;
+    f.irPitch = true;
+    f.irDeadzone = true;
+    f.swingAngle = true;
 
     if (device == RETRO_DEVICE_WIIMOTE_NC)
     {
@@ -1024,13 +1302,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
       wmButtons->SetControlExpression(4, "L");                             // -
       wmButtons->SetControlExpression(5, "R");                             // +
 
-      if (irMode != 0 && irMode != 1)
-      {
-        wmTilt->SetControlExpression(0, "`" + devAnalog + ":Y1-`");  // Forward
-        wmTilt->SetControlExpression(1, "`" + devAnalog + ":Y1+`");  // Backward
-        wmTilt->SetControlExpression(2, "`" + devAnalog + ":X1-`");  // Left
-        wmTilt->SetControlExpression(3, "`" + devAnalog + ":X1+`");  // Right
-      }
+      f.irMode = true;
     }
     else
     {
@@ -1107,44 +1379,16 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
     wmDPad->SetControlExpression(2, "Left");   // Left
     wmDPad->SetControlExpression(3, "Right");  // Right
 
-    if (irMode == 0 || irMode == 1)
-    {
-      // Set right stick to control the IR
-      wmIR->SetControlExpression(0, "`" + devAnalog + ":Y1-`");     // Up
-      wmIR->SetControlExpression(1, "`" + devAnalog + ":Y1+`");     // Down
-      wmIR->SetControlExpression(2, "`" + devAnalog + ":X1-`");     // Left
-      wmIR->SetControlExpression(3, "`" + devAnalog + ":X1+`");     // Right
-      static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[4].get())
-        ->SetValue(irMode == 0);                                    // Relative input
-      static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[5].get())
-        ->SetValue(true);                                           // Auto hide
-    }
-    else
-    {
-      // Mouse controls IR
-      wmIR->SetControlExpression(0, "`" + devPointer + ":Y0-`");    // Up
-      wmIR->SetControlExpression(1, "`" + devPointer + ":Y0+`");    // Down
-      wmIR->SetControlExpression(2, "`" + devPointer + ":X0-`");    // Left
-      wmIR->SetControlExpression(3, "`" + devPointer + ":X0+`");    // Right
-      static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[4].get())
-        ->SetValue(false);                                          // Relative input
-      static_cast<ControllerEmu::NumericSetting<bool>*>(wmIR->numeric_settings[5].get())
-        ->SetValue(false);                                          // Auto hide
-    }
+    f.irModifier = true;
+    f.swingModifier = true;
+    f.sideways = true;
+    Libretro::Input::UpdateWiimoteMappings(f, port, device);
 
     wmShake->SetControlExpression(0, "R2 | `" + devMouse + ":Middle`");  // Wiimote shake X
     wmShake->SetControlExpression(1, "R2 | `" + devMouse + ":Middle`");  // Wiimote shake Y
     wmShake->SetControlExpression(2, "R2 | `" + devMouse + ":Middle`");  // Wiimote shake Z
-
-    wmHotkeys->SetControlExpression(0, "L3");  // Sideways Toggle
-#if 0
-    wmHotkeys->SetControlExpression(1, "");  // Upright Toggle
-    wmHotkeys->SetControlExpression(2, "");  // Sideways Hold
-    wmHotkeys->SetControlExpression(3, "");  // Upright Hold
-#endif
   }
 
-  ControllerEmu::ControlGroup* wmRumble = wm->GetWiimoteGroup(WiimoteGroup::Rumble);
   ControllerEmu::ControlGroup* wmOptions = wm->GetWiimoteGroup(WiimoteGroup::Options);
   ControllerEmu::Attachments* wmExtension =
       (ControllerEmu::Attachments*)wm->GetWiimoteGroup(WiimoteGroup::Attachments);
@@ -1158,6 +1402,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
   static_cast<ControllerEmu::NumericSetting<bool>*>(wmOptions->numeric_settings[3].get())
       ->SetValue(false);  // Sideways Wiimote
 
+  ControllerEmu::ControlGroup* wmRumble = wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::Rumble);
   bool enableRumble = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::ENABLE_RUMBLE);
   if (enableRumble)
     wmRumble->SetControlExpression(0, "Rumble");
@@ -1200,5 +1445,7 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
   }
 
   wm->UpdateReferences(g_controller_interface);
-  ::Wiimote::GetConfig()->SaveConfig();
+  bool saveOrLoad = Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::SAVE_LOAD_SETTINGS);
+  if (!saveOrLoad)
+    ::Wiimote::GetConfig()->SaveConfig();
 }

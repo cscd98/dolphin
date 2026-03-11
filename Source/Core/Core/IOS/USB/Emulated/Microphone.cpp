@@ -28,6 +28,11 @@
 #include "jni/AndroidCommon/IDCache.h"
 #endif
 
+#ifdef __LIBRETRO__
+#include <libretro.h>
+#include "DolphinLibretro/Common/Globals.h"
+#endif
+
 namespace IOS::HLE::USB
 {
 #ifdef HAVE_CUBEB
@@ -53,6 +58,80 @@ void Microphone::Initialize()
 }
 
 #ifndef HAVE_CUBEB
+#ifdef __LIBRETRO__
+void Microphone::StreamInit()
+{
+  StreamStart(m_sampler.GetDefaultSamplingRate());
+}
+
+void Microphone::StreamTerminate()
+{
+  StreamStop();
+}
+
+void Microphone::StreamStart(u32 sampling_rate)
+{
+  if (!Libretro::Input::g_has_microphone_support)
+    return;
+
+  if (m_retro_mic)
+    StreamStop();
+
+  retro_microphone_params_t params{};
+  params.rate = sampling_rate;
+  m_current_sampling_rate = sampling_rate;
+
+  m_retro_mic = Libretro::Input::g_microphone_interface.open_mic(&params);
+  if (!m_retro_mic)
+  {
+    WARN_LOG_FMT(IOS_USB, "Microphone: failed to open mic at {}Hz", sampling_rate);
+    return;
+  }
+
+  {
+    std::lock_guard lock(m_ring_lock);
+    m_stream_buffer.resize(GetStreamSize());
+    m_stream_wpos = 0;
+    m_stream_rpos = 0;
+    m_samples_avail = 0;
+  }
+
+  Libretro::Input::g_microphone_interface.set_mic_state(
+    static_cast<retro_microphone_t*>(m_retro_mic), true);
+
+  Libretro::Input::g_active_microphones.push_back(this);
+
+  INFO_LOG_FMT(IOS_USB, "Microphone: opened mic at {}Hz", sampling_rate);
+}
+
+void Microphone::StreamStop()
+{
+  if (!m_retro_mic)
+    return;
+
+  std::erase(Libretro::Input::g_active_microphones, this);
+  Libretro::Input::g_microphone_interface.close_mic(
+      static_cast<retro_microphone_t*>(m_retro_mic));
+  m_retro_mic = nullptr;
+}
+
+void Microphone::PollRetroArchMic()
+{
+  if (!m_retro_mic)
+    return;
+  if (!m_sampler.IsSampleOn() || m_sampler.IsMuted() || IsMicrophoneMuted())
+    return;
+
+  const int frames_per_call = static_cast<int>(m_current_sampling_rate / 60);
+  std::vector<SampleType> buf(frames_per_call);
+
+  const int frames = Libretro::Input::g_microphone_interface.read_mic(
+    static_cast<retro_microphone_t*>(m_retro_mic), buf.data(), frames_per_call);
+
+  if (frames > 0)
+    DataCallback(buf.data(), frames);
+}
+#else
 void Microphone::StreamInit()
 {
 }
@@ -68,6 +147,7 @@ void Microphone::StreamStop()
 void Microphone::StreamTerminate()
 {
 }
+#endif
 #else
 void Microphone::StreamInit()
 {
@@ -177,7 +257,9 @@ long Microphone::CubebDataCallback(cubeb_stream* stream, void* user_data, const 
 
   return mic->DataCallback(static_cast<const SampleType*>(input_buffer), nframes);
 }
+#endif
 
+#if defined(HAVE_CUBEB) || defined(__LIBRETRO__)
 long Microphone::DataCallback(const SampleType* input_buffer, long nframes)
 {
   std::lock_guard lock(m_ring_lock);

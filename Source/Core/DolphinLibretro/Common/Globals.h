@@ -1,9 +1,21 @@
+#pragma once
+
 #include <libretro.h>
+#include <vector>
+#include "Core/IOS/USB/Emulated/Microphone.h"
 
 namespace Libretro
 {
 extern retro_environment_t environ_cb;
 extern bool g_emuthread_launched;
+
+namespace Input
+{
+extern retro_microphone_interface g_microphone_interface;
+extern bool g_has_microphone_support;
+extern bool g_gc_mic_button[4];
+extern std::vector<IOS::HLE::USB::Microphone*> g_active_microphones;
+} // namespace Input
 
 namespace Video
 {

@@ -7,7 +7,10 @@
 #include <cstring>
 #include <mutex>
 
+#if defined(HAVE_CUBEB)
 #include <cubeb/cubeb.h>
+#include "AudioCommon/CubebUtils.h"
+#endif
 
 #include "AudioCommon/CubebUtils.h"
 #include "Common/CommonTypes.h"
@@ -23,6 +26,11 @@
 #include <objbase.h>
 #endif
 
+#ifdef __LIBRETRO__
+#include <libretro.h>
+#include "DolphinLibretro/Common/Globals.h"
+#endif
+
 namespace ExpansionInterface
 {
 void CEXIMic::StreamInit()
@@ -30,6 +38,7 @@ void CEXIMic::StreamInit()
   stream_buffer = nullptr;
   samples_avail = stream_wpos = stream_rpos = 0;
 
+#ifdef HAVE_CUBEB
 #ifdef _WIN32
   if (!m_coinit_success)
     return;
@@ -39,12 +48,14 @@ void CEXIMic::StreamInit()
 #ifdef _WIN32
   });
 #endif
+#endif
 }
 
 void CEXIMic::StreamTerminate()
 {
   StreamStop();
 
+#ifdef HAVE_CUBEB
   if (m_cubeb_ctx)
   {
 #ifdef _WIN32
@@ -57,8 +68,10 @@ void CEXIMic::StreamTerminate()
     });
 #endif
   }
+#endif
 }
 
+#ifdef HAVE_CUBEB
 static void state_callback(cubeb_stream* stream, void* user_data, cubeb_state state)
 {
 }
@@ -86,9 +99,34 @@ long CEXIMic::DataCallback(cubeb_stream* stream, void* user_data, const void* in
 
   return nframes;
 }
+#endif
 
 void CEXIMic::StreamStart()
 {
+#ifdef __LIBRETRO__
+  if (!Libretro::Input::g_has_microphone_support)
+    return;
+
+  if (m_retro_mic)
+    StreamStop();
+
+  stream_size = buff_size_samples * 500;
+  stream_buffer = new s16[stream_size];
+
+  retro_microphone_params_t params{};
+  params.rate = sample_rate;
+  m_retro_mic = Libretro::Input::g_microphone_interface.open_mic(&params);
+
+  if (!m_retro_mic)
+  {
+    WARN_LOG_FMT(EXPANSIONINTERFACE, "CEXIMic: failed to open GC mic at {}Hz", sample_rate);
+    return;
+  }
+
+  Libretro::Input::g_microphone_interface.set_mic_state(
+      static_cast<retro_microphone_t*>(m_retro_mic), true);
+
+#elif defined(HAVE_CUBEB)
   if (!m_cubeb_ctx)
     return;
 
@@ -132,10 +170,19 @@ void CEXIMic::StreamStart()
 #ifdef _WIN32
   });
 #endif
+#endif
 }
 
 void CEXIMic::StreamStop()
 {
+#ifdef __LIBRETRO__
+  if (m_retro_mic)
+  {
+    Libretro::Input::g_microphone_interface.close_mic(
+        static_cast<retro_microphone_t*>(m_retro_mic));
+    m_retro_mic = nullptr;
+  }
+#elif defined(HAVE_CUBEB)
   if (m_cubeb_stream)
   {
 #ifdef _WIN32
@@ -149,6 +196,7 @@ void CEXIMic::StreamStop()
     });
 #endif
   }
+#endif
 
   samples_avail = stream_wpos = stream_rpos = 0;
 
@@ -333,4 +381,34 @@ void CEXIMic::TransferByte(u8& byte)
 
   m_position++;
 }
+
+#ifdef __LIBRETRO__
+void CEXIMic::PollLibretroMic()
+{
+  if (!m_retro_mic || !status.is_active)
+    return;
+
+  s16 buf[64];  // max buff_size_samples (ring_base << 2 = 128 bytes / 2 = 64 samples)
+
+  const int frames = Libretro::Input::g_microphone_interface.read_mic(
+      static_cast<retro_microphone_t*>(m_retro_mic), buf, buff_size_samples);
+
+  if (frames <= 0)
+    return;
+
+  std::lock_guard lk(ring_lock);
+  for (int i = 0; i < frames; i++)
+  {
+    stream_buffer[stream_wpos] = buf[i];
+    stream_wpos = (stream_wpos + 1) % stream_size;
+  }
+  samples_avail += frames;
+  if (samples_avail > stream_size)
+  {
+    samples_avail = 0;
+    status.buff_ovrflw = 1;
+  }
+}
+#endif
+
 }  // namespace ExpansionInterface

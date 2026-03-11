@@ -18,10 +18,14 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/CPU.h"
+#include "Core/HW/EXI/EXI.h"
+#include "Core/HW/EXI/EXI_Device.h"
+#include "Core/HW/EXI/EXI_DeviceMic.h"
 #include "Core/HW/Memmap.h"
 #include "Core/HW/ProcessorInterface.h"
 #include "Core/HW/VideoInterface.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
+#include "Core/IOS/USB/Emulated/Microphone.h"
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinLibretro/Audio.h"
@@ -293,9 +297,14 @@ void retro_run(void)
   flags.swingAngle = Libretro::Options::IsUpdated(Libretro::Options::wiimote::SWING_ANGLE);
   flags.sideways = Libretro::Options::IsUpdated(Libretro::Options::wiimote::HOTKEY_SIDEWAYS_TOGGLE);
   flags.rumble = Libretro::Options::IsUpdated(Libretro::Options::sysconf::ENABLE_RUMBLE);
+  flags.gcMicBtn = Libretro::Options::IsUpdated(Libretro::Options::sysconf_gc::HOTKEY_ACTIVATE_MICROPHONE);
 
   if (flags.any())
     Libretro::Input::ResetControllers(flags);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WII_SPEAK_MUTED))
+    Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,
+      Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WII_SPEAK_MUTED));
 
   if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING))
   {
@@ -328,6 +337,30 @@ void retro_run(void)
     if (libretro_stream)
     {
       libretro_stream->PushAudioForFrame();
+    }
+  }
+
+  if (Libretro::Input::g_has_microphone_support)
+  {
+    bool wiiSpeakEnable = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WII_SPEAK_ENABLE);
+    bool wiiLogiMicEnable = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WII_LOGI_MICROPHONE_ENABLE);
+    bool gcMicEnable = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf_gc::ENABLE_GAMECUBE_MIC);
+
+    if (system.IsWii() && (wiiSpeakEnable || wiiLogiMicEnable))
+    {
+      for (auto* mic : Libretro::Input::g_active_microphones)
+        mic->PollRetroArchMic();
+    }
+    else if(gcMicEnable)
+    {
+      // Poll GC mic
+      auto* exi_device = system.GetExpansionInterface().GetDevice(ExpansionInterface::Slot::B);
+      if (exi_device && Config::Get(Config::GetInfoForEXIDevice(ExpansionInterface::Slot::B))
+        == ExpansionInterface::EXIDeviceType::Microphone)
+      {
+        auto* gc_mic = static_cast<ExpansionInterface::CEXIMic*>(exi_device);
+        gc_mic->PollLibretroMic();
+      }
     }
   }
 }

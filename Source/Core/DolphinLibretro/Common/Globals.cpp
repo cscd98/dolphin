@@ -2,12 +2,20 @@
 
 namespace Libretro
 {
-retro_environment_t environ_cb;
+retro_environment_t environ_cb = nullptr;
 bool g_emuthread_launched = false;
+
+namespace Input
+{
+retro_microphone_interface g_microphone_interface{};
+bool g_has_microphone_support = false;
+bool g_gc_mic_button[4];
+std::vector<IOS::HLE::USB::Microphone*> g_active_microphones{};
+} // namespace Input
 
 namespace Video
 {
 retro_video_refresh_t video_cb = nullptr;
-retro_hw_render_callback hw_render{};
+struct retro_hw_render_callback hw_render{};
 }  // namespace Video
 }  // namespace Libretro

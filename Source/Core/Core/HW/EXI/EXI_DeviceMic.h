@@ -23,6 +23,10 @@ public:
   bool IsInterruptSet() override;
   bool IsPresent() const override;
 
+#ifdef __LIBRETRO__
+  void PollLibretroMic();
+#endif
+
 private:
   static u8 const exi_id[];
   static int const sample_size = sizeof(s16);
@@ -60,8 +64,10 @@ private:
     };
   };
 
+#ifdef HAVE_CUBEB
   static long DataCallback(cubeb_stream* stream, void* user_data, const void* input_buffer,
                            void* output_buffer, long nframes);
+#endif
 
   void TransferByte(u8& byte) override;
 
@@ -81,8 +87,10 @@ private:
   void UpdateNextInterruptTicks();
 
   // Streaming input interface
+#ifdef HAVE_CUBEB
   std::shared_ptr<cubeb> m_cubeb_ctx = nullptr;
   cubeb_stream* m_cubeb_stream = nullptr;
+#endif
 
   UStatus status;
 
@@ -105,6 +113,9 @@ private:
   Common::AsyncWorkThread m_work_queue;
   bool m_coinit_success = false;
   bool m_should_couninit = false;
+#endif
+#ifdef __LIBRETRO__
+  void* m_retro_mic = nullptr;
 #endif
 };
 }  // namespace ExpansionInterface

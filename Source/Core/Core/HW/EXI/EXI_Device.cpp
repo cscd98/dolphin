@@ -18,7 +18,7 @@
 #include "Core/HW/Memmap.h"
 #include "Core/System.h"
 
-#ifdef HAVE_CUBEB
+#if defined(HAVE_CUBEB) || defined(__LIBRETRO__)
 #include "Core/HW/EXI/EXI_DeviceMic.h"
 #else
 #include "Common/MsgHandler.h"
@@ -137,7 +137,7 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(Core::System& system, const EXIDevi
     break;
 
   case EXIDeviceType::Microphone:
-#ifdef HAVE_CUBEB
+#if defined(HAVE_CUBEB) || defined(__LIBRETRO__)
     result = std::make_unique<CEXIMic>(system, channel_num);
 #else
     PanicAlertFmtT("Dolphin was built with Cubeb disabled. The Microphone device cannot be used.");

@@ -434,6 +434,19 @@ bool retro_load_game(const struct retro_game_info* game)
 
   Libretro::Input::Init(wsi);
 
+  // for Wii
+  if (Libretro::Input::g_has_microphone_support)
+  {
+    Config::SetCurrent(Config::MAIN_EMULATE_WII_SPEAK,
+      Libretro::GetOption<bool>(sysconf::WII_SPEAK_ENABLE, /*def=*/false));
+    Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,
+      Libretro::GetOption<bool>(sysconf::WII_SPEAK_MUTED, /*def=*/true));
+
+    // logitech
+    Config::SetCurrent(Config::MAIN_EMULATE_LOGITECH_MIC[0],
+      Libretro::GetOption<bool>(sysconf::WII_LOGI_MICROPHONE_ENABLE, /*def=*/false));
+  }
+
   if (!BootManager::BootCore(Core::System::GetInstance(),
                              BootParameters::GenerateFromFile(normalized_game_paths), wsi))
   {

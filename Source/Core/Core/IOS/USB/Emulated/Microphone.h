@@ -19,6 +19,10 @@ struct cubeb;
 struct cubeb_stream;
 #endif
 
+#ifdef __LIBRETRO__
+#include <libretro.h>
+#endif
+
 namespace IOS::HLE::USB
 {
 class MicrophoneState
@@ -48,6 +52,10 @@ public:
   FloatType ComputeGain(FloatType relative_db) const;
   void SetSamplingRate(u32 sampling_rate);
 
+#ifdef __LIBRETRO__
+  void PollRetroArchMic();
+#endif
+
 protected:
   static constexpr u32 BUFF_SIZE_SAMPLES = 32;
 
@@ -57,6 +65,9 @@ private:
                                 void* output_buffer, long nframes);
   virtual std::string GetInputDeviceId() const = 0;
   virtual std::string GetCubebStreamName() const = 0;
+#endif
+
+#if defined(HAVE_CUBEB) || defined(__LIBRETRO__)
   virtual s16 GetVolumeModifier() const = 0;
   virtual bool AreSamplesByteSwapped() const = 0;
 #endif
@@ -122,6 +133,11 @@ private:
   std::shared_ptr<cubeb> m_cubeb_ctx = nullptr;
   cubeb_stream* m_cubeb_stream = nullptr;
   CubebUtils::CoInitSyncWorker m_worker;
+#endif
+
+#ifdef __LIBRETRO__
+  void* m_retro_mic = nullptr;
+  u32 m_current_sampling_rate = 0;
 #endif
 };
 }  // namespace IOS::HLE::USB

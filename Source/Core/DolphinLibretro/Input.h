@@ -18,11 +18,12 @@ struct WiimoteUpdateFlags
     bool swingAngle    = false;
     bool sideways      = false;
     bool rumble        = false;
+    bool gcMicBtn      = false;
 
     bool any() const {
         return irMode || irOffset || irYaw || irPitch ||
                irDeadzone || irModifier || swingModifier ||
-               swingAngle || sideways || rumble;
+               swingAngle || sideways || rumble || gcMicBtn;
     }
 };
 
@@ -49,6 +50,7 @@ void Shutdown();
 void ResetControllers(const WiimoteUpdateFlags& f);
 void BluetoothPassthroughBind();
 void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned device);
+void UpdateGCMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned device);
 } // namespace Input
 } // namespace Libretro
 

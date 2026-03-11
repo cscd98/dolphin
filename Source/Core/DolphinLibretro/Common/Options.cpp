@@ -442,6 +442,45 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "255" // default: None
   },
+  {
+    Libretro::Options::sysconf_gc::ENABLE_GAMECUBE_MIC,
+    "System Configuration (GC) > GameCube Microphone",
+    "GameCube Microphone",
+    "Emulate the official GameCube microphone accessory. Restart core after changing this option.",
+    nullptr,
+    CATEGORY_GC,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::sysconf_gc::HOTKEY_ACTIVATE_MICROPHONE,
+    "System Configuration (GC) > Microphone Button",
+    "Microphone Button",
+    "Button to hold or press to activate the microphone input. Selecting OFF disables microphone activation.",
+    nullptr,
+    CATEGORY_GC,
+    {
+      { MODIFIER_DISABLED_CONTROL, "Disabled" },
+      { "L3",       nullptr },
+      { "R3",       nullptr },
+      { "L1",       nullptr },
+      { "R1",       nullptr },
+      { "L2",       nullptr },
+      { "R2",       nullptr },
+      { "A",        nullptr },
+      { "B",        nullptr },
+      { "X",        nullptr },
+      { "Y",        nullptr },
+      { "Start",    nullptr },
+      { "Select",   nullptr },
+      { nullptr,    nullptr }
+    },
+    MODIFIER_DISABLED_CONTROL
+  },
 
   // ========== SYSCONF.IPL ==========
   {
@@ -551,6 +590,49 @@ static struct retro_core_option_v2_definition option_defs[] = {
     "System Configuration > Bluetooth passthrough mode",
     "Bluetooth passthrough mode",
     "Pass all traffic directly to the host's Bluetooth adapter. Press F12 to begin the sync process.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+
+  {
+    Libretro::Options::sysconf::WII_SPEAK_ENABLE,
+    "System Configuration > Wii Speak",
+    "Wii Speak",
+    "Emulate the Wii Speak microphone. Restart when changing this option.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::sysconf::WII_SPEAK_MUTED,
+    "Audio > Devices > Wii Speak Muted",
+    "Wii Speak Muted",
+    "Mute or unmute the Wii Speak microphone.",
+    nullptr,
+    CATEGORY_SYSCONF,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::sysconf::WII_LOGI_MICROPHONE_ENABLE,
+    "System Configuration > Logitech USB Microphone",
+    "Logitech USB Microphone",
+    "Emulate the Logitech USB microphone. Restart when changing this option.",
     nullptr,
     CATEGORY_SYSCONF,
     {

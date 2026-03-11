@@ -695,6 +695,8 @@ endif()
 
 if(ENABLE_CUBEB)
   target_link_libraries(core PUBLIC cubeb)
+endif()
+if(ENABLE_CUBEB OR LIBRETRO)
   target_sources(core PRIVATE
     HW/EXI/EXI_DeviceMic.cpp
     HW/EXI/EXI_DeviceMic.h
@@ -825,4 +827,9 @@ if(USE_RETRO_ACHIEVEMENTS)
   if(RC_CLIENT_SUPPORTS_RAINTEGRATION)
     target_compile_definitions(core PUBLIC -DRC_CLIENT_SUPPORTS_RAINTEGRATION)
   endif()
+endif()
+
+if(LIBRETRO)
+  # for Microphone
+  target_include_directories(core PRIVATE ${CMAKE_SOURCE_DIR}/Externals/Libretro/Include)
 endif()

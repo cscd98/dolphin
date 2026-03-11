@@ -13,6 +13,7 @@
 #include "Core/Config/WiimoteSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/FreeLookManager.h"
+#include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/GBAPad.h"
 #include "Core/HW/GCKeyboard.h"
 #include "Core/HW/GCPad.h"
@@ -29,6 +30,7 @@
 #include "Core/System.h"
 #include "Core/WiiUtils.h"
 #include "DolphinLibretro/Input.h"
+#include "DolphinLibretro/Common/Globals.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControlReference/ExpressionParser.h"
@@ -469,6 +471,25 @@ void Init(const WindowSystemInfo& wsi)
     WARN_LOG_FMT(COMMON, "RetroArch does not support RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE.");
   }
 
+  retro_microphone_interface mic_iface{RETRO_MICROPHONE_INTERFACE_VERSION};
+
+  if (environ_cb(RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE, &mic_iface) &&
+      mic_iface.interface_version == RETRO_MICROPHONE_INTERFACE_VERSION)
+  {
+    Libretro::Input::g_microphone_interface = mic_iface;
+    Libretro::Input::g_has_microphone_support = true;
+
+    bool gcMicEnable = Libretro::Options::GetCached<bool>(
+      Libretro::Options::sysconf_gc::ENABLE_GAMECUBE_MIC);
+
+    if (!Core::System::GetInstance().IsWii() && gcMicEnable)
+      Config::SetCurrent(Config::MAIN_SLOT_B, ExpansionInterface::EXIDeviceType::Microphone);
+  }
+  else
+  {
+    WARN_LOG_FMT(IOS_USB, "Microphone interface NOT available");
+  }
+
   g_controller_interface.Initialize(wsi);
   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
 
@@ -664,6 +685,14 @@ void ResetControllers(const WiimoteUpdateFlags& f)
   // only update what has changed
   if (f.any())
   {
+    auto& system = Core::System::GetInstance();
+    if (!system.IsWii())
+    {
+      for (int port = 0; port < 4; port++)
+        UpdateGCMappings(f, port, input_types[port]);
+      return;
+    }
+
     for (int port = 0; port < 4; port++)
       UpdateWiimoteMappings(f, port, input_types[port]);
     return;
@@ -688,6 +717,23 @@ void BluetoothPassthroughBind()
   was_pressed = sync;
 }
 
+static int GetRetroButtonId(const std::string& name)
+{
+  if (name == "A") return RETRO_DEVICE_ID_JOYPAD_A;
+  if (name == "B") return RETRO_DEVICE_ID_JOYPAD_B;
+  if (name == "X") return RETRO_DEVICE_ID_JOYPAD_X;
+  if (name == "Y") return RETRO_DEVICE_ID_JOYPAD_Y;
+  if (name == "L") return RETRO_DEVICE_ID_JOYPAD_L2;
+  if (name == "R") return RETRO_DEVICE_ID_JOYPAD_R2;
+  if (name == "L2") return RETRO_DEVICE_ID_JOYPAD_L;
+  if (name == "R2") return RETRO_DEVICE_ID_JOYPAD_R;
+  if (name == "L3") return RETRO_DEVICE_ID_JOYPAD_L3;
+  if (name == "R3") return RETRO_DEVICE_ID_JOYPAD_R3;
+  if (name == "Start") return RETRO_DEVICE_ID_JOYPAD_START;
+  if (name == "Select") return RETRO_DEVICE_ID_JOYPAD_SELECT;
+  return -1;
+}
+
 void Update()
 {
   if (poll_cb)
@@ -704,6 +750,22 @@ void Update()
   {
     UpdateAccelerometer(i);
     UpdateGyro(i);
+  }
+
+  auto& system = Core::System::GetInstance();
+  bool gcMicEnable = Libretro::Options::GetCached<bool>(Libretro::Options::sysconf_gc::ENABLE_GAMECUBE_MIC);
+
+  if (!system.IsWii() && Libretro::Input::g_has_microphone_support && gcMicEnable)
+  {
+    std::string micHotkey = Libretro::Options::GetCached<std::string>(
+      Libretro::Options::sysconf_gc::HOTKEY_ACTIVATE_MICROPHONE);
+    int micButtonId = GetRetroButtonId(micHotkey);
+
+    for (int i = 0; i < 4; i++)
+    {
+      g_gc_mic_button[i] = (micButtonId >= 0) ?
+        (input_cb(i, RETRO_DEVICE_JOYPAD, 0, micButtonId) != 0) : false;
+    }
   }
 }
 
@@ -893,6 +955,28 @@ void UpdateWiimoteMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned 
     bool saveOrLoad = Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::SAVE_LOAD_SETTINGS);
     if (!saveOrLoad)
       ::Wiimote::GetConfig()->SaveConfig();
+  }
+}
+
+void UpdateGCMappings(const WiimoteUpdateFlags& f, unsigned port, unsigned device)
+{
+  if (!f.any())
+    return;
+
+  auto& system = Core::System::GetInstance();
+
+  if (system.IsWii())
+    return;
+
+  if (f.gcMicBtn && Libretro::Input::g_has_microphone_support)
+  {
+    GCPad* gcPad = (GCPad*)Pad::GetConfig()->GetController(port > 3 ? port - 4 : port);
+    ControllerEmu::ControlGroup* gcMic = gcPad->GetGroup(PadGroup::Mic);
+    std::string gcMicButton = Libretro::Options::GetCached<std::string>
+      (Libretro::Options::sysconf_gc::HOTKEY_ACTIVATE_MICROPHONE);
+
+    if (!gcMicButton.empty())
+      gcMic->SetControlExpression(0, gcMicButton);
   }
 }
 
@@ -1131,9 +1215,14 @@ void retro_set_controller_port_device_gc(unsigned port, unsigned device)
   ControllerEmu::ControlGroup* gcRumble = gcPad->GetGroup(PadGroup::Rumble);
   ControllerEmu::ControlGroup* gcOptions = gcPad->GetGroup(PadGroup::Options);
   ControllerEmu::ControlGroup* gcTriforce = gcPad->GetGroup(PadGroup::Triforce);
-#if 0
-  ControllerEmu::ControlGroup* gcMic = gcPad->GetGroup(PadGroup::Mic);
-#endif
+
+  if (Libretro::Input::g_has_microphone_support)
+  {
+    WiimoteUpdateFlags f;
+    f.gcMicBtn = true;
+    Libretro::Input::UpdateGCMappings(f, port, device);
+  }
+
   gcButtons->SetControlExpression(0, "A");                          // A
   gcButtons->SetControlExpression(1, "B");                          // B
   gcButtons->SetControlExpression(2, "X");                          // X

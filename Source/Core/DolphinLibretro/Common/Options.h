@@ -165,6 +165,8 @@ namespace main_bluetooth {
 // ======================================================
 namespace sysconf_gc {
   constexpr const char SP1_DEVICE[] = "dolphin_gc_sp1";
+  constexpr const char ENABLE_GAMECUBE_MIC[] = "dolphin_enable_gamecube_mic";
+  constexpr const char HOTKEY_ACTIVATE_MICROPHONE[] = "dolphin_hotkey_activate_microphone";
 }
 
 // ======================================================
@@ -178,6 +180,9 @@ namespace sysconf {
   constexpr const char ENABLE_RUMBLE[] = "dolphin_enable_rumble";
   constexpr const char WIIMOTE_CONTINUOUS_SCANNING[] = "dolphin_wiimote_continuous_scanning";
   constexpr const char ALT_GC_PORTS_ON_WII[] = "dolphin_alt_gc_ports_on_wii";
+  constexpr const char WII_SPEAK_ENABLE[] = "dolphin_wiispeak_enable";
+  constexpr const char WII_SPEAK_MUTED[] = "dolphin_wiispeak_muted";
+  constexpr const char WII_LOGI_MICROPHONE_ENABLE[] = "dolphin_wii_logi_microphone_enable";
 }  // namespace sysconf
 
 // ======================================================

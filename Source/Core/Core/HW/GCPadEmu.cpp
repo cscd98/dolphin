@@ -17,6 +17,10 @@
 #include "InputCommon/ControllerEmu/StickGate.h"
 #include "InputCommon/GCPadStatus.h"
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/Common/Globals.h"
+#endif
+
 static const u16 button_bitmasks[] = {
     PAD_BUTTON_A,
     PAD_BUTTON_B,
@@ -263,6 +267,13 @@ void GCPad::LoadDefaults(const ControllerInterface& ciface)
 
 bool GCPad::GetMicButton() const
 {
+#ifdef __LIBRETRO__
+  for (int i = 0; i < 4; i++)
+    if (Libretro::Input::g_gc_mic_button[i])
+      return true;
+  return false;
+#else
   const auto lock = GetStateLock();
   return m_mic->controls.back()->GetState<bool>();
+#endif
 }

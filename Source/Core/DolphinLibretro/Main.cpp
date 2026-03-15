@@ -13,6 +13,7 @@
 #include "Common/scmrev.h"
 #include "Common/Version.h"
 #include "Core/BootManager.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigManager.h"
@@ -301,6 +302,15 @@ void retro_run(void)
 
   if (flags.any())
     Libretro::Input::ResetControllers(flags);
+
+  if (Libretro::Options::IsUpdated(Libretro::Options::gfx_settings::ASPECT_RATIO))
+    Config::SetCurrent(
+      Config::GFX_ASPECT_RATIO, static_cast<AspectMode>(
+        Libretro::GetOption<int>(
+          Libretro::Options::gfx_settings::ASPECT_RATIO, static_cast<int>(AspectMode::Stretch)
+        )
+      )
+    );
 
   if (Libretro::Options::IsUpdated(Libretro::Options::sysconf::WII_SPEAK_MUTED))
     Config::SetCurrent(Config::MAIN_WII_SPEAK_MUTED,

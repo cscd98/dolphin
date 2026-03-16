@@ -237,6 +237,9 @@ bool retro_load_game(const struct retro_game_info* game)
 #if defined(_DEBUG)
   Config::SetBase(Config::MAIN_FASTMEM, false);
   Config::SetBase(Config::MAIN_FASTMEM_ARENA, false);
+
+  // stop emulation if unfound instruction
+  Config::SetCurrent(Config::MAIN_PAUSE_ON_PANIC, true);
 #else
   Config::SetBase(Config::MAIN_FASTMEM,
                      Libretro::GetOption<bool>(core::FASTMEM, /*def=*/true));

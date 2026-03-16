@@ -297,8 +297,8 @@ void Interpreter::unknown_instruction(Interpreter& interpreter, UGeckoInstructio
                                    Common::Log::LogLevel::LNOTICE);
 
   // JUST DIE
-  exit(-1);
-  system.GetCPU().Break();
+  //exit(-1);
+  //system.GetCPU().Break();
 
   const auto& ppc_state = interpreter.m_ppc_state;
   NOTICE_LOG_FMT(

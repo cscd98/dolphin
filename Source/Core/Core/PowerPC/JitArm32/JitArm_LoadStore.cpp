@@ -236,11 +236,14 @@ void JitArm::SafeStoreFromReg(s32 dest, u32 value, s32 regOffset, int accessSize
   // Generic path (auto backpatch: DSI if illegal, slow fallback)
   else
   {
-    // If address was computed, addr_reg already holds it; otherwise materialize imm.
     if (is_immediate)
       MOVI2R(addr_reg, imm_addr);
-    // PROTECTED: EmitBackpatchRoutine uses R10/R11/R12 - already locked above
-    EmitBackpatchRoutine(this, flags, MemAccessMode::Auto, true,
+    // When jo.memcheck is true, force slow access so hardware registers go through
+    // ReadFromJit/WriteFromJit rather than triggering a host page fault that backpatches
+    // to a path that calls PanicAlertFmt + Break(). Matches JitArm64 behaviour.
+    const MemAccessMode store_mode = jo.memcheck ? MemAccessMode::AlwaysSlowAccess
+                                                 : MemAccessMode::Auto;
+    EmitBackpatchRoutine(this, flags, store_mode, true,
                          value_is_zero ? INVALID_REG : RS);
   }
 
@@ -499,15 +502,16 @@ void JitArm::SafeLoadToReg(ARMReg dest, s32 addr, s32 offsetReg, int accessSize,
 	if (signExtend)
 		flags |= BackPatchInfo::FLAG_EXTEND;
 
-  // Use fastmem with backpatching for non-immediate addresses
-  // For immediate addresses, check if they're in optimizable RAM
-  bool use_fastmem = jo.fastmem;
+  // Use fastmem with backpatching for non-immediate addresses.
+  // Must also be disabled when jo.memcheck is true (IsPauseOnPanicMode or IsMMUMode):
+  // fastmem faults for hardware registers backpatch to slow path, but if ReadFromJit
+  // can't resolve the address it calls PanicAlertFmt + Break().
+  // Matching JitArm64: gate fastmem on !jo.memcheck so those accesses always go slow.
+  bool use_fastmem = jo.fastmem && !jo.memcheck;
 
-  if (is_immediate)
+  if (use_fastmem && is_immediate)
   {
-    // For known addresses, check if they're safe for fastmem
-    use_fastmem = use_fastmem &&
-                  m_mmu.IsOptimizableRAMAddress(imm_addr, BackPatchInfo::GetFlagSize(flags));
+    use_fastmem = m_mmu.IsOptimizableRAMAddress(imm_addr, BackPatchInfo::GetFlagSize(flags));
   }
 
   if (use_fastmem)
@@ -702,10 +706,12 @@ void JitArm::stmw(UGeckoInstruction inst)
 
 void JitArm::dcbst(UGeckoInstruction inst)
 {
-	INSTRUCTION_START
-	JITDISABLE(bJITLoadStoreOff);
-
   JIT_LOG("dcbst!");
+
+  FALLBACK_IF(m_accurate_cpu_cache_enabled);
+
+  INSTRUCTION_START
+  JITDISABLE(bJITLoadStoreOff);
 
 	// If the dcbst instruction is preceded by dcbt, it is flushing a prefetched
 	// memory location.  Do not invalidate the JIT cache in this case as the memory
@@ -714,10 +720,4 @@ void JitArm::dcbst(UGeckoInstruction inst)
 	Core::CPUThreadGuard guard(m_system);
 
 	FALLBACK_IF((PowerPC::MMU::HostRead<u32>(guard, js.compilerPC - 4) & 0x7c00022c) != 0x7c00022c);
-}
-
-void JitArm::icbi(UGeckoInstruction inst)
-{
-	FallBackToInterpreter(inst);
-	WriteExit(js.compilerPC + 4);
 }

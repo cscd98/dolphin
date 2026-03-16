@@ -284,7 +284,7 @@ constexpr std::array<JitArmOpTemplate, 108> s_table31{{
 
 	{4,   &JitArm::twx},                    // tw
 	{598, &JitArm::DoNothing},              // sync
-	{982, &JitArm::icbi},                   // icbi
+	{982, &JitArm::FallBackToInterpreter},  // icbi
 
 	// Unused instructions on GC
 	{310, &JitArm::FallBackToInterpreter},  // eciwx

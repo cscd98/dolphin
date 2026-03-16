@@ -61,29 +61,20 @@ void JitArmTrampoline(JitBase& jit, u32 em_address)
     repeat_count = 1;
   }
 
-	// sanity check: did we end up with a bogus exit PC?
-	if (em_address <= 0x00000800)
-	{
-		const u32 exc = jit.m_ppc_state.Exceptions;
+  // Let jit.Jit() handle everything, including sub-0x800 addresses.
+  //
+  // When em_address is a virtual address with no BAT/TLB mapping (e.g. 0x00000000
+  // reached via `blr` with LR=0 in virtual mode), PPCAnalyst will fail to translate it
+  // and set code_block.m_memory_exception = true.  Jit() then raises EXCEPTION_ISI via
+  // CheckExceptions(), which sets pc = npc = 0x400, clears MSR.IR/DR, updates
+  // feature_flags, and returns.  The dispatcher's post-trampoline path reloads
+  // DISPATCHER_PC from ppcstate.pc (now 0x400) and re-dispatches naturally.
+  //
+  // A previous manual ISI injection here incorrectly fired for ALL addresses in
+  // [0x000, 0x7FF] that weren't exact exception vector entry points (0x404, 0x408...),
+  // creating an infinite redirect loop back to 0x400 that hit the repeat_count guard.
 
-    // allow if the address matches a defined exception vector
-    bool allowed =
-      em_address == 0x00000300 || // DSI
-      em_address == 0x00000400 || // ISI
-      em_address == 0x00000500 || // External interrupt
-      em_address == 0x00000600 || // Alignment
-      em_address == 0x00000700 || // Program
-      em_address == 0x00000800;   // FPU unavailable
-
-    if (!allowed)
-    {
-      JIT_ERR("JIT ARM32: unexpected nextPC <= 0x00000800 at em_address %08x (Exceptions=%08x)",
-        em_address, exc);
-      std::abort();
-    }
-	}
-
-	jit.Jit(em_address);
+  jit.Jit(em_address);
 }
 
 static void WriteDual8(PowerPC::MMU& mmu, u32 val1, u32 val2, u32 addr)
@@ -1098,22 +1089,26 @@ void JitArm::EmitUpdateMembase()
            jo.fastmem ? memory.GetLogicalBase()
                       : memory.GetLogicalPageMappingsBase())));
 
-  // Load MSR and test DR (bit 27)
+  // Load MSR and test DR (IBM bit 27 = standard bit 4 from LSB = value 16).
+  // DR=1 means data address translation is active (virtual mode).
+  // DR=0 means real (physical) mode.
   LDR(W, PPC_REG, PPCSTATE_OFF(msr));
-  // Use ST_LSR, not ShiftType::LSR, and reuse W
-  TST(W, Operand2(W, ST_LSR, 27));
+  TST(W, 16);  // bit 4 = DR.  Previous code did TST(W, W>>27) which is always 0 — BUG.
 
-  // If DR != 0, overwrite MEM_REG with physical base
+  // If DR == 0 (real mode), MEM_REG already holds logical base → skip overwrite.
   FixupBranch dr_clear = B_CC(CC_EQ);
+
+  // DR == 1 (virtual mode): overwrite with physical/logical base as appropriate.
   MOVI2R(MEM_REG,
          static_cast<u32>(reinterpret_cast<uintptr_t>(
            jo.fastmem ? memory.GetPhysicalBase()
                       : memory.GetPhysicalPageMappingsBase())));
-  B_CC(CC_AL);
+  // Fall through — both paths commit MEM_REG to PPCState below.
+  // (The previous B_CC(CC_AL) here had no SetJumpTarget and was dead code — removed.)
 
   SetJumpTarget(dr_clear);
-  // DR == 0 → MEM_REG already holds logical base
+  // DR == 0 → MEM_REG already holds logical base.
 
-  // Commit to PPCState
+  // Commit to PPCState so C++ helpers read the same base as the JIT.
   STR(MEM_REG, PPC_REG, PPCSTATE_OFF(mem_ptr));
 }

@@ -180,6 +180,7 @@ void retro_reset(void)
 
 void PrintJitLogs()
 {
+#ifdef _M_ARM_32
   while (g_jit_log_read_idx != g_jit_log_write_idx)
   {
     const auto& entry = g_jit_log_buffer[g_jit_log_read_idx];
@@ -187,10 +188,12 @@ void PrintJitLogs()
     g_jit_log_read_idx = (g_jit_log_read_idx + 1) & 0xFF;
   }
   fflush(stdout);
+#endif
 }
 
 void retro_run(void)
 {
+#ifdef _M_ARM_32
   static bool first = true;
   if (first) {
     printf("retro_run: write_idx=%u read_idx=%u\n",
@@ -199,7 +202,7 @@ void retro_run(void)
   }
 
   PrintJitLogs();
-
+#endif
   Libretro::Input::InitSensors();
   Libretro::Options::CheckForUpdatedVariables();
   Libretro::FrameTiming::CheckForFastForwarding();

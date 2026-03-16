@@ -229,7 +229,6 @@ public:
 	void lmw(UGeckoInstruction _inst);
 	void stmw(UGeckoInstruction _inst);
 
-	void icbi(UGeckoInstruction _inst);
 	void dcbst(UGeckoInstruction _inst);
 
 	// Floating point
@@ -342,6 +341,8 @@ protected:
 	void DoDownCount();
 	void ResetStack();
 	void IntializeSpeculativeConstants();
+	void LogGeneratedCode() const;
+
 	void MSRUpdated(ArmGen::ARMReg msr);
 
 	void Helper_UpdateCR1(ArmGen::ARMReg fpscr, ArmGen::ARMReg temp);

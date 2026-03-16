@@ -503,11 +503,11 @@ void JitArm::bclrx(UGeckoInstruction inst)
   JIT_LOG_NUM("bclrx: current inst.hex", inst.hex);
   JIT_LOG_NUM("bclrx: current compiler.PC", js.compilerPC);
 
-  {
+  /*{
     auto tmp = gpr.GetScopedReg();
     LDR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_LR));
     JIT_LOG_REG("bclrx: LR at start is:", tmp);
-  }
+  }*/
 
   INSTRUCTION_START;
   JITDISABLE(bJITBranchOff);
@@ -611,7 +611,7 @@ void JitArm::bclrx(UGeckoInstruction inst)
       SetJumpTarget(pCTRDontBranch);
   }
 
-  if (!analyzer.HasOption(PPCAnalyst::PPCAnalyzer::OPTION_CONDITIONAL_CONTINUE))
+  if (conditional && !analyzer.HasOption(PPCAnalyst::PPCAnalyzer::OPTION_CONDITIONAL_CONTINUE))
   {
     gpr.Flush(FlushMode::All, ArmGen::INVALID_REG, IgnoreDiscardedRegisters::No);
     fpr.Flush(FlushMode::All, ArmGen::INVALID_REG, IgnoreDiscardedRegisters::No);

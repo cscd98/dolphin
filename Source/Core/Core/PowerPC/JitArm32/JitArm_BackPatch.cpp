@@ -465,7 +465,8 @@ u32 JitArm::EmitBackpatchRoutine(u32 flags, MemAccessMode mode, ARMReg RS, ARMRe
 
 		// Slow access path - unchanged from your original
 		if (flags & BackPatchInfo::FLAG_STORE &&
-		    flags & (BackPatchInfo::FLAG_SIZE_32 | BackPatchInfo::FLAG_SIZE_64))
+		    flags & (BackPatchInfo::FLAG_SIZE_32 | BackPatchInfo::FLAG_SIZE_64) &&
+		    RS >= ArmGen::S0)  // FP path only when RS is a VFP register — integer stw also sets FLAG_SIZE_32 but uses a GPR
 		{
 			ABI_PushCallerGPRsAndAdjustStack_BP(emit);
 			if (flags & BackPatchInfo::FLAG_SIZE_32)
@@ -493,7 +494,8 @@ u32 JitArm::EmitBackpatchRoutine(u32 flags, MemAccessMode mode, ARMReg RS, ARMRe
 			ABI_PopCallerGPRsAndAdjustStack_BP(emit);
 		}
 		else if (flags & BackPatchInfo::FLAG_LOAD &&
-		         flags & (BackPatchInfo::FLAG_SIZE_32 | BackPatchInfo::FLAG_SIZE_64))
+		         flags & (BackPatchInfo::FLAG_SIZE_32 | BackPatchInfo::FLAG_SIZE_64) &&
+		         RS >= ArmGen::S0)  // FP path only when RS is a VFP register — integer lwz also sets FLAG_SIZE_32 but uses a GPR
 		{
 			ABI_PushCallerGPRsAndAdjustStack_BP(emit);
 			emit->MOVI2R(R0, reinterpret_cast<u32>(&m_mmu));

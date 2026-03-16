@@ -4,6 +4,9 @@
 
 #include <map>
 
+#include <fmt/format.h>
+#include <fmt/ostream.h>
+
 #include "Common/ArmEmitter.h"
 #include "Common/CommonTypes.h"
 
@@ -28,6 +31,7 @@
 #include "Common/HostDisassembler.h"
 #include "Common/IOFile.h"
 #include "Common/Profiler.h"
+#include "Common/GekkoDisassembler.h"
 
 constexpr size_t CODE_SIZE      = 1024 * 1024 * 32;   // 32 MB near
 constexpr size_t FARCODE_SIZE   = 1024 * 1024 * 64;   // 64 MB far
@@ -292,7 +296,48 @@ void JitArm::FallBackToInterpreter(UGeckoInstruction inst)
           js.compilerPC,
           js.op->opinfo ? js.op->opinfo->opname : "<null>");
 
-  //JIT_LOG_NUM("JIT ARM32: Falling back to interpreter for instruction at PC", js.compilerPC);
+  // Unknown/invalid opcodes: the interpreter's unknown_instruction() calls
+  // IsPauseOnPanicMode() and Break()s on this platform, which stops emulation.
+  // JIT64 avoids this because its host (x86-64 PC) has IsPauseOnPanicMode()==false.
+  //
+  // Generate JIT code that raises EXCEPTION_PROGRAM (Illegal Instruction) properly:
+  // set SRR0=pc, set SRR1 illegal-instr bit, set Exceptions flag, then let
+  // WriteExceptionExit call CheckExceptions which routes to the 0x700 vector.
+  // Use always_exception=false so if Exceptions is 0 (already handled) we skip.
+  if (!js.op->opinfo ||
+      js.op->opinfo->type == ::OpType::Unknown ||
+      js.op->opinfo->type == ::OpType::Invalid)
+  {
+    JIT_ERR("[FallBackToInterpreter] Unknown/Invalid opcode 0x%08x at 0x%08x — raising EXCEPTION_PROGRAM",
+            inst.hex, js.compilerPC);
+    gpr.Flush();
+    fpr.Flush();
+
+    auto tmp = gpr.GetScopedReg();
+
+    // SRR0 = faulting PC
+    MOVI2R(tmp, js.compilerPC);
+    STR(tmp, PPC_REG, PPCSTATE_OFF_SPR(SPR_SRR0));
+
+    // SRR1 = (MSR & 0x87C0FFFF) | IllegalInstruction bit (PPC bit 12 from MSB = 0x00080000)
+    LDR(R12, PPC_REG, PPCSTATE_OFF(msr));
+    MOVI2R(tmp, 0x87C0FFFF);
+    AND(R12, R12, R(tmp));
+    MOVI2R(tmp, 0x00080000);  // ProgramExceptionCause::IllegalInstruction
+    ORR(R12, R12, R(tmp));
+    STR(R12, PPC_REG, PPCSTATE_OFF_SPR(SPR_SRR1));
+
+    // Exceptions |= EXCEPTION_PROGRAM
+    MOVI2R(tmp, static_cast<u32>(EXCEPTION_PROGRAM));
+    LDR(R12, PPC_REG, PPCSTATE_OFF(Exceptions));
+    ORR(R12, R12, R(tmp));
+    STR(R12, PPC_REG, PPCSTATE_OFF(Exceptions));
+
+    // Exit via exception path — always_exception=true to ensure CheckExceptions fires
+    // even though we just set it (it will clear the flag and route to 0x700)
+    WriteExceptionExit(js.compilerPC, false, true);
+    return;
+  }
 
   JIT_ERR("[FallBackToInterpreter] About to call WriteCallInterpreter");
   WriteCallInterpreter(inst);
@@ -1536,6 +1581,9 @@ void JitArm::Jit(u32 em_address, bool clear_cache_and_retry_on_failure)
         JIT_LOG("JIT ARM32: Complete for PC %08x", em_address);
       }
 
+#ifdef JIT_LOG_GENERATED_CODE
+      LogGeneratedCode();
+#endif
       return;
     }
   }
@@ -1925,4 +1973,26 @@ std::size_t JitArm::DisassembleFarCode(const JitBlock& block, std::ostream& stre
   JIT_LOG( "JIT ARM32: Disassembling far code for block at address %08x", block.effectiveAddress);
 
   return m_disassembler->Disassemble(block.far_begin, block.far_end, stream);
+}
+
+void JitArm::LogGeneratedCode() const
+{
+  std::ostringstream stream;
+
+  stream << "\nPPC Code Buffer:\n";
+  for (const PPCAnalyst::CodeOp& op :
+       std::span{m_code_buffer.data(), code_block.m_num_instructions})
+  {
+    fmt::print(stream, "0x{:08x}\t\t{}\n", op.address,
+               Common::GekkoDisassembler::Disassemble(op.inst.hex, op.address));
+  }
+
+  const JitBlock* const block = js.curBlock;
+  stream << "\nHost Near Code:\n";
+  m_disassembler->Disassemble(block->normalEntry, block->near_end, stream);
+  stream << "\nHost Far Code:\n";
+  m_disassembler->Disassemble(block->far_begin, block->far_end, stream);
+
+  // TODO C++20: std::ostringstream::view()
+  DEBUG_LOG_FMT(DYNA_REC, "{}", std::move(stream).str());
 }

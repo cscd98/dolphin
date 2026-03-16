@@ -67,6 +67,7 @@ namespace Libretro
 {
 extern retro_environment_t environ_cb;
 static bool widescreen;
+double g_core_refresh_rate{0};
 }  // namespace Libretro
 
 extern "C" {
@@ -151,7 +152,12 @@ void retro_get_system_av_info(retro_system_av_info* info)
     Libretro::widescreen = Config::Get(Config::SYSCONF_WIDESCREEN);
 
   info->geometry.aspect_ratio = Libretro::widescreen ? 16.0 / 9.0 : 4.0 / 3.0;
-  info->timing.fps = (retro_get_region() == RETRO_REGION_NTSC) ? (60.0f / 1.001f) : 50.0f;
+
+  Core::System& system = Core::System::GetInstance();
+  double fps = system.GetVideoInterface().GetTargetRefreshRate();
+  if (fps <= 0.0)
+    fps = (retro_get_region() == RETRO_REGION_NTSC) ? (60.0 / 1.001) : 50.0;
+  info->timing.fps = fps;
   info->timing.sample_rate = Libretro::Audio::GetActiveSampleRate();
 }
 
@@ -225,6 +231,8 @@ void retro_run(void)
     while (!Core::IsRunningOrStarting(Core::System::GetInstance()))
       Common::SleepCurrentThread(100);
 
+    Libretro::g_core_refresh_rate = system.GetVideoInterface().GetTargetRefreshRate();
+
     // Expose memory layout to RetroArch for RetroAchievements.
     // rcheevos matches descriptors by real_address from its console region
     // definitions: GameCube MEM1 at 0x80000000, Wii MEM2 at 0x90000000.
@@ -285,6 +293,18 @@ void retro_run(void)
     retro_system_av_info info;
     retro_get_system_av_info(&info);
     Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
+  }
+
+  // target refresh rate has changed - e.g. user has chosen 60 Hz for a PAL game
+  double new_rate = system.GetVideoInterface().GetTargetRefreshRate();
+
+  if (round(Libretro::g_core_refresh_rate * 1e6) != round(new_rate * 1e6))
+  {
+    Libretro::g_core_refresh_rate = new_rate;
+
+    retro_system_av_info info;
+    retro_get_system_av_info(&info);
+    Libretro::environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &info);
   }
 
   WiimoteUpdateFlags flags;
@@ -434,7 +454,7 @@ bool retro_unserialize(const void* data, size_t size)
   return true;
 }
 
-unsigned retro_get_region(void)
+unsigned retro_get_region()
 {
   Core::System& system = Core::System::GetInstance();
 

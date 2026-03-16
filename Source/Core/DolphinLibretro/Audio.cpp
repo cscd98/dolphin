@@ -126,8 +126,9 @@ void Init()
 
 inline unsigned GetSamplesForFrame(unsigned sample_rate)
 {
-  double frame_time_sec = FrameTiming::target_frame_duration_usec.load(std::memory_order_relaxed) * 1e-6;
-  return std::clamp(static_cast<unsigned>(frame_time_sec * sample_rate),
+  double frame_time_sec =
+      FrameTiming::target_frame_duration_usec.load(std::memory_order_relaxed) * 1e-6;
+  return std::clamp(static_cast<unsigned>(std::lround(frame_time_sec * sample_rate)),
                     MIN_SAMPLES, MAX_SAMPLES);
 }
 
@@ -230,10 +231,18 @@ void Stream::PushAudioForFrame()
   }
   else
   {
-    if (retro_get_region() == RETRO_REGION_NTSC)
-      samples_for_frame = m_sample_rate / 60;
+    if (Libretro::g_core_refresh_rate <= 0.0)
+    {
+      if (retro_get_region() == RETRO_REGION_NTSC)
+        samples_for_frame = m_sample_rate / 60;
+      else
+        samples_for_frame = m_sample_rate / 50;
+    }
     else
-      samples_for_frame = m_sample_rate / 50;
+    {
+      samples_for_frame =
+        static_cast<unsigned>(std::lround(m_sample_rate / Libretro::g_core_refresh_rate));
+    }
   }
   
   samples_for_frame = std::clamp(samples_for_frame, MIN_SAMPLES, MAX_SAMPLES);

@@ -8,6 +8,7 @@
 
 namespace Libretro
 {
+extern double g_core_refresh_rate;
 namespace Audio
 {
 extern retro_audio_sample_batch_t batch_cb;

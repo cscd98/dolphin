@@ -4,20 +4,28 @@
 #include <string>
 #include <thread>
 
+#include <fstream>
+#include <vector>
+
 #include "AudioCommon/AudioCommon.h"
 #include "Common/ChunkFile.h"
 #include "Common/Event.h"
+#include "Common/IniFile.h"
+#include "Common/FileUtil.h"
 #include "Common/GL/GLContext.h"
 #include "Common/Logging/LogManager.h"
 #include "Common/Thread.h"
 #include "Common/scmrev.h"
 #include "Common/Version.h"
+#include "Core/ActionReplay.h"
 #include "Core/BootManager.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
+#include "Core/GeckoCode.h"
+#include "Core/GeckoCodeConfig.h"
 #include "Core/HW/CPU.h"
 #include "Core/HW/EXI/EXI.h"
 #include "Core/HW/EXI/EXI_Device.h"
@@ -27,6 +35,7 @@
 #include "Core/HW/VideoInterface.h"
 #include "Core/HW/WiimoteReal/WiimoteReal.h"
 #include "Core/IOS/USB/Emulated/Microphone.h"
+#include "Core/PatchEngine.h"
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinLibretro/Audio.h"
@@ -37,6 +46,7 @@
 #include "VideoBackends/OGL/OGLGfx.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/TextureConfig.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
@@ -68,6 +78,7 @@ namespace Libretro
 extern retro_environment_t environ_cb;
 static bool widescreen;
 double g_core_refresh_rate{0};
+extern void reload_cheats_from_ini();
 }  // namespace Libretro
 
 extern "C" {
@@ -487,11 +498,104 @@ void* retro_get_memory_data(unsigned id)
   return NULL;
 }
 
-void retro_cheat_reset(void)
+static void enable_cheat_by_code(bool enabled, const char* code)
 {
+  std::string incoming(code);
+  bool found = false;
+
+  // Match Action Replay codes
+  for (auto& c : Libretro::g_ar_codes)
+  {
+    std::string serialized;
+    serialized.reserve(64);
+
+    for (const auto& op : c.ops)
+    {
+      if (!serialized.empty())
+          serialized += "+";
+
+      serialized += fmt::format("{:08X} {:08X}", op.cmd_addr, op.value);
+    }
+
+    if (serialized == incoming)
+    {
+      c.enabled = enabled;
+      found = true;
+      break;
+    }
+  }
+
+  // Match Gecko codes only if not already matched
+  if (!found)
+  {
+    for (auto& c : Libretro::g_gecko_codes)
+    {
+      std::string serialized;
+      serialized.reserve(64);
+
+      for (const auto& line : c.codes)
+      {
+        if (!serialized.empty())
+            serialized += "+";
+
+        serialized += line.original_line;
+      }
+
+      if (serialized == incoming)
+      {
+        c.enabled = enabled;
+        found = true;
+        break;
+      }
+    }
+  }
 }
 
-void retro_cheat_set(unsigned index, bool enabled, const char* code)
+// reset cheats to off
+void retro_cheat_reset(void)
 {
+  const bool importCheats = Libretro::GetOption<bool>(Libretro::Options::core::CHEATS_IMPORT, true);
+
+  if (!Config::AreCheatsEnabled() || !importCheats)
+    return;
+
+  Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
+    PatchEngine::Shutdown();
+  }, true);
+
+  Libretro::reload_cheats_from_ini();
+}
+
+// Enable/disable a cheat
+void retro_cheat_set(unsigned index, bool enabled, const char *code)
+{
+  if (!Config::AreCheatsEnabled())
+  {
+    OSD::AddMessage("You cannot apply any cheats until you have enabled the following option:\n"
+      "Core > Internal Cheats - set this to ON", OSD::Duration::VERY_LONG, OSD::Color::RED);
+    return;
+  }
+
+  const bool importCheats = Libretro::GetOption<bool>(Libretro::Options::core::CHEATS_IMPORT, true);
+  if (!importCheats)
+  {
+    OSD::AddMessage("You cannot apply any cheats until you enabled the following option:\n"
+      "Core > Automatically Import Cheats into RetroArch - set this to ON", OSD::Duration::VERY_LONG, OSD::Color::RED);
+    return;
+  }
+
+  const std::string& game_id = SConfig::GetInstance().GetGameID();
+  const u16 game_revision = SConfig::GetInstance().GetRevision();
+
+  // Look up by code as index is unreliable
+  enable_cheat_by_code(enabled, code);
+
+  Core::RunOnCPUThread(Core::System::GetInstance(), [&] {
+    // Apply Action Replay
+    ActionReplay::ApplyCodes(Libretro::g_ar_codes, game_id, game_revision);
+
+    // Apply Gecko
+    Gecko::SetActiveCodes(Libretro::g_gecko_codes, game_id, game_revision);
+  }, true);
 }
 } // extern "C"

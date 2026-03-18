@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <filesystem>
+#include <fstream>
 
 #include "Common/CommonPaths.h"
 #include "Common/FileUtil.h"
@@ -14,6 +15,7 @@
 #include "Core/Config/SYSCONFSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
+#include "Core/GeckoCodeConfig.h"
 #include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/VideoInterface.h"
@@ -23,6 +25,7 @@
 #include "DolphinLibretro/Audio.h"
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Log.h"
+#include "DolphinLibretro/Common/Globals.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
@@ -49,6 +52,117 @@ static std::string DenormalizePath(const std::string& path);
 static unsigned disk_index = 0;
 static bool eject_state;
 static std::vector<std::string> disk_paths;
+
+// silence forward declaration warnings
+void reload_cheats_from_ini();
+void generate_cht_from_ini(std::string fileName);
+
+void reload_cheats_from_ini()
+{
+  // Load Dolphin INI files
+  const auto& sconfig = SConfig::GetInstance();
+  Common::IniFile globalIni = sconfig.LoadDefaultGameIni();
+  Common::IniFile localIni = sconfig.LoadLocalGameIni();
+
+  // Load ActionReplay codes
+  Libretro::g_ar_codes = ActionReplay::LoadCodes(globalIni, localIni);
+
+  // Load Gecko codes
+  Libretro::g_gecko_codes = Gecko::LoadCodes(globalIni, localIni);
+}
+
+void generate_cht_from_ini(std::string fileName)
+{
+  const char* sysdir = nullptr;
+
+  if (!Libretro::environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &sysdir) || !sysdir)
+    return;
+
+  std::string base = sysdir;
+  size_t pos = base.find_last_of("/\\");
+  if (pos != std::string::npos)
+      base = base.substr(0, pos);
+
+  // Write RetroArch .cht
+  std::string cheatDir = base + "/cheats/dolphin-emu/";
+  std::string cheatFile = cheatDir + fileName + ".cht";
+
+  if (File::Exists(cheatFile))
+  {
+    INFO_LOG_FMT(BOOT, "Cheats: pre-existing cht file found: {}", cheatFile);
+    return;
+  }
+
+  size_t total = Libretro::g_ar_codes.size() + Libretro::g_gecko_codes.size();
+  if (total == 0)
+  {
+    INFO_LOG_FMT(BOOT, "Cheats: not generating cht file as no ActionReply or Gecko codes found");
+    return;
+  }
+
+  if (!File::CreateFullPath(cheatFile))
+    return;
+
+  std::ofstream out(cheatFile);
+  if (!out.is_open())
+  {
+    ERROR_LOG_FMT(BOOT, "Cheats: unable to create a new cht file at: {}", cheatFile);
+    return;
+  }
+
+  out << "cheats = " << total << "\n\n";
+
+  size_t cheat_index = 0;
+
+  // -------------------------
+  // Action Replay
+  // -------------------------
+  for (const auto& c : Libretro::g_ar_codes)
+  {
+    std::string code;
+
+    for (const auto& op : c.ops)
+    {
+      if (!code.empty())
+        code += "+";
+
+      code += fmt::format("{:08X} {:08X}", op.cmd_addr, op.value);
+    }
+
+    out << "cheat" << cheat_index << "_desc = \"" << c.name << "\"\n";
+    out << "cheat" << cheat_index << "_code = \"" << code << "\"\n";
+    out << "cheat" << cheat_index << "_enable = " << (c.enabled ? "true" : "false") << "\n\n";
+
+    cheat_index++;
+  }
+
+  // -------------------------
+  // Gecko
+  // -------------------------
+  for (const auto& c : Libretro::g_gecko_codes)
+  {
+    std::string code;
+
+    for (const auto& line : c.codes)
+    {
+      if (!code.empty())
+          code += "+";
+
+      code += line.original_line;
+    }
+
+    out << "cheat" << cheat_index << "_desc = \"" << c.name << "\"\n";
+    out << "cheat" << cheat_index << "_code = \"" << code << "\"\n";
+    out << "cheat" << cheat_index << "_enable = " << (c.enabled ? "true" : "false") << "\n\n";
+
+    cheat_index++;
+  }
+
+  out.close();
+
+  INFO_LOG_FMT(BOOT, "Cheats: cht file created successfully at: {}", cheatFile);
+}
+
 } // namespace Libretro
 
 bool retro_load_game(const struct retro_game_info* game)
@@ -465,6 +579,14 @@ bool retro_load_game(const struct retro_game_info* game)
   }
 
   Libretro::Input::InitStage2();
+
+  const bool importCheats = Libretro::GetOption<bool>(core::CHEATS_IMPORT, true);
+
+  if (importCheats)
+  {
+    Libretro::reload_cheats_from_ini();
+    Libretro::generate_cht_from_ini(filename_str);
+  }
 
   return true;
 }

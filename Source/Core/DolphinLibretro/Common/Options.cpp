@@ -221,7 +221,7 @@ static struct retro_core_option_v2_definition option_defs[] = {
     Libretro::Options::core::CHEATS_ENABLED,
     "Core > Internal Cheats",
     "Internal Cheats",
-    "Enable built-in cheat codes.",
+    "Enable built-in cheat codes. Restart core to take effect.",
     nullptr,
     CATEGORY_CORE,
     {
@@ -230,6 +230,20 @@ static struct retro_core_option_v2_definition option_defs[] = {
       { nullptr, nullptr }
     },
     "disabled"
+  },
+  {
+    Libretro::Options::core::CHEATS_IMPORT,
+    "Core > Automatically Import Cheats into RetroArch",
+    "Automatically Import Cheats into RetroArch",
+    "Import dolphin ini files into RetroArch. Restart core to take effect.",
+    nullptr,
+    CATEGORY_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled",  nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
   },
   {
     Libretro::Options::core::SKIP_GC_BIOS,

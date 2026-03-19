@@ -657,10 +657,6 @@ if(UNIX)
   add_definitions(-DUSE_MEMORYWATCHER=1)
 endif()
 
-if(ENABLE_SDL)
-  dolphin_find_optional_system_library(SDL3 Externals/SDL 3.2.0)
-endif()
-
 if(ENABLE_ANALYTICS)
   message(STATUS "Enabling analytics collection (subject to end-user opt-in)")
   add_definitions(-DUSE_ANALYTICS=1)
@@ -700,7 +696,7 @@ endif()
 add_subdirectory(Externals/cpp-optparse)
 
 dolphin_find_optional_system_library_pkgconfig(FMT
-  fmt>=11.0 fmt::fmt Externals/fmt
+  fmt>=10.1 fmt::fmt Externals/fmt
 )
 
 add_subdirectory(Externals/imgui)
@@ -731,6 +727,13 @@ endif()
 if(NOT (WIN32 AND _M_ARM_64))
   # OpenGL is available on all platforms except windows-arm64
   add_definitions(-DHAS_OPENGL)
+endif()
+
+if(NOT WIN32)
+  if(ANDROID)
+    set(USE_SYSTEM_Iconv OFF)
+  endif()
+  dolphin_find_optional_system_library(Iconv Externals/libiconv 1.14)
 endif()
 
 dolphin_find_optional_system_library(pugixml Externals/pugixml)
@@ -776,10 +779,12 @@ if(ENABLE_CUBEB)
 endif()
 
 if(NOT ANDROID AND NOT IOS)
-  dolphin_find_optional_system_library_pkgconfig(
-    LibUSB libusb-1.0 LibUSB::LibUSB Externals/libusb
-  )
+  dolphin_find_optional_system_library(LibUSB Externals/libusb)
   add_definitions(-D__LIBUSB__)
+endif()
+
+if(ENABLE_SDL)
+  dolphin_find_optional_system_library(SDL3 Externals/SDL 3.2.0)
 endif()
 
 dolphin_find_optional_system_library(SFML Externals/SFML 3.0 COMPONENTS Network System)
@@ -792,15 +797,6 @@ endif()
 dolphin_find_optional_system_library(MBEDTLS Externals/mbedtls 2.28)
 
 dolphin_find_optional_system_library(CURL Externals/curl)
-
-if(NOT WIN32)
-  if(NOT ANDROID)
-    dolphin_find_optional_system_library(Iconv Externals/libiconv 1.14)
-  else()
-    message(STATUS "Using static iconv from Externals")
-    add_subdirectory(Externals/libiconv EXCLUDE_FROM_ALL)
-  endif()
-endif()
 
 if(NOT ANDROID AND NOT IOS)
   dolphin_find_optional_system_library(HIDAPI Externals/hidapi)

@@ -32,6 +32,9 @@
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Globals.h"
 #include "DolphinLibretro/Common/Options.h"
+#ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
+#include "InputCommon/ControllerInterface/DualShockUDPClient/DualShockUDPClient.h"
+#endif
 #include "InputCommon/ControlReference/ControlReference.h"
 #include "InputCommon/ControlReference/ExpressionParser.h"
 #include "InputCommon/ControllerEmu/Control/Control.h"
@@ -1449,6 +1452,37 @@ void retro_set_controller_port_device_wii(unsigned port, unsigned device)
               wmGyro->SetControlExpression(5, "`" + devSensor + ":GyroZ`");       // Yaw Right
             }
           }
+        }
+      }
+      else if (Libretro::Options::GetCached<bool>(Libretro::Options::wiimote_dsu::DSU_ENABLED, false))
+      {
+        std::string devDSU = ciface::Core::DeviceQualifier(
+            std::string("DSUClient"),
+            static_cast<int>(port),
+            std::string("DS4")).ToString();
+
+        auto* wmAccel = static_cast<ControllerEmu::IMUAccelerometer*>(
+            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUAccelerometer));
+        if (wmAccel)
+        {
+          wmAccel->SetControlExpression(0, "`" + devDSU + ":Accel Up`");       // Up
+          wmAccel->SetControlExpression(1, "`" + devDSU + ":Accel Down`");     // Down
+          wmAccel->SetControlExpression(2, "`" + devDSU + ":Accel Left`");     // Left
+          wmAccel->SetControlExpression(3, "`" + devDSU + ":Accel Right`");    // Right
+          wmAccel->SetControlExpression(4, "`" + devDSU + ":Accel Forward`");  // Forward
+          wmAccel->SetControlExpression(5, "`" + devDSU + ":Accel Backward`"); // Backward
+        }
+
+        auto* wmGyro = static_cast<ControllerEmu::IMUGyroscope*>(
+            wm->GetWiimoteGroup(WiimoteEmu::WiimoteGroup::IMUGyroscope));
+        if (wmGyro)
+        {
+          wmGyro->SetControlExpression(0, "`" + devDSU + ":Gyro Pitch Up`");   // Pitch Up
+          wmGyro->SetControlExpression(1, "`" + devDSU + ":Gyro Pitch Down`"); // Pitch Down
+          wmGyro->SetControlExpression(2, "`" + devDSU + ":Gyro Roll Left`");  // Roll Left
+          wmGyro->SetControlExpression(3, "`" + devDSU + ":Gyro Roll Right`"); // Roll Right
+          wmGyro->SetControlExpression(4, "`" + devDSU + ":Gyro Yaw Left`");   // Yaw Left
+          wmGyro->SetControlExpression(5, "`" + devDSU + ":Gyro Yaw Right`");  // Yaw Right
         }
       }
       else

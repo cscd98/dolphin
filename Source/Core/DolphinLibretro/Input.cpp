@@ -34,6 +34,7 @@
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Globals.h"
 #include "DolphinLibretro/Common/Options.h"
+#include "DolphinLibretro/VideoViews.h"
 #ifdef CIFACE_USE_DUALSHOCKUDPCLIENT
 #include "InputCommon/ControllerInterface/DualShockUDPClient/DualShockUDPClient.h"
 #endif
@@ -328,7 +329,14 @@ private:
     std::string GetName() const override { return m_name; }
     ControlState GetState() const override
     {
-      return std::max(0.0, input_cb(m_port, m_device, m_index, m_id) / m_range);
+      double raw = input_cb(m_port, m_device, m_index, m_id);
+      if (m_device == RETRO_DEVICE_POINTER && m_id == RETRO_DEVICE_ID_POINTER_X &&
+          Libretro::Video::Views::IsStereoPacked() &&
+          !Libretro::Options::GetCached<bool>(Libretro::Options::wiimote::IR_PASSTHROUGH))
+      {
+        raw = std::clamp(raw / 32767.0 * 2.0 + 1.0, -1.0, 1.0) * 32767.0;
+      }
+      return std::max(0.0, raw / m_range);
     }
 
   private:

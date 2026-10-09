@@ -7,6 +7,7 @@ add_library(dolphin_libretro SHARED
   Log.cpp
   Main.cpp
   Video.cpp
+  VideoViews.cpp
 )
 
 if(ENABLE_VULKAN)
@@ -65,10 +66,12 @@ set(LIBRETRO_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/Externals/libretro-common/include)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/Common)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/VideoContexts)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/VideoCommon)
 
 target_link_libraries(dolphin_libretro PRIVATE
   dolphin_libretro_common
   dolphin_libretro_videocontexts
+  dolphin_libretro_videocommon
 )
 
 if(MINGW)

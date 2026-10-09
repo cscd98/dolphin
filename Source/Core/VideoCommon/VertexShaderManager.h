@@ -12,6 +12,10 @@
 #include "VideoCommon/ConstantManager.h"
 #include "VideoCommon/NativeVertexFormat.h"
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/VideoCommon/HeadTracking.h"
+#endif
+
 class PointerWrap;
 struct PortableVertexDeclaration;
 class XFStateManager;
@@ -84,4 +88,12 @@ private:
   bool m_projection_graphics_mod_change = false;
 
   Common::Matrix44 LoadProjectionMatrix();
+
+#ifdef __LIBRETRO__
+  u64 m_head_tracking_generation = 0;
+  bool HeadTrackingChanged() const
+  {
+    return HeadTracking::Generation() != m_head_tracking_generation;
+  }
+#endif
 };

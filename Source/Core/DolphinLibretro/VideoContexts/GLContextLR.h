@@ -16,7 +16,9 @@ public:
   bool Initialize(const WindowSystemInfo& wsi, bool stereo, bool core) override;
   bool IsInitialized() const { return m_initialized; }
   void Shutdown();
+  void Update() override;
 
 private:
+  void UpdateBackbufferSize();
   bool m_initialized = false;
 };

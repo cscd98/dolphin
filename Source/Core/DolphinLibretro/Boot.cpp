@@ -43,6 +43,7 @@
 #include "VideoCommon/Resources/CustomResourceManager.h"
 #include "VideoCommon/Fifo.h"
 #include "VideoCommon/OnScreenDisplay.h"
+#include "VideoViews.h"
 
 namespace fs = std::filesystem;
 
@@ -675,6 +676,7 @@ bool retro_load_game(const struct retro_game_info* game)
   Libretro::FrameTiming::Init();
   Libretro::Audio::Init();
   Libretro::Video::Init();
+  Libretro::Video::Views::Reset();
   WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
   VideoBackendBase::PopulateBackendInfo(wsi);
   NOTICE_LOG_FMT(VIDEO, "Using GFX backend: {}", Config::Get(Config::MAIN_GFX_BACKEND));

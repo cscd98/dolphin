@@ -291,6 +291,10 @@ void WriteSwitch(ShaderCode& out, APIType ApiType, std::string_view variable,
 #define I_LINEPTPARAMS "clinept"
 #define I_TEXOFFSET "ctexoffset"
 
+#ifdef __LIBRETRO__
+#define I_STEREOEYE "cstereoeye"
+#endif
+
 static const char s_shader_uniforms[] = "\tuint    components;\n"
                                         "\tuint    xfmem_dualTexInfo;\n"
                                         "\tuint    xfmem_numColorChans;\n"
@@ -327,7 +331,12 @@ static const char s_shader_uniforms[] = "\tuint    components;\n"
 static const char s_geometry_shader_uniforms[] = "\tfloat4 " I_STEREOPARAMS ";\n"
                                                  "\tfloat4 " I_LINEPTPARAMS ";\n"
                                                  "\tint4 " I_TEXOFFSET ";\n"
+#ifdef __LIBRETRO__
+                                                 "\tuint vs_expand;\n"
+                                                 "\tfloat4 " I_STEREOEYE "[4];\n";
+#else
                                                  "\tuint vs_expand;\n";
+#endif
 
 constexpr std::string_view CUSTOM_PIXELSHADER_COLOR_FUNC = "customShaderColor";
 

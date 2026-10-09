@@ -236,8 +236,15 @@ ShaderCode GenerateGeometryShaderCode(APIType api_type, const ShaderHostConfig& 
     // the depth value. This results in objects at a distance smaller than the convergence
     // distance to seemingly appear in front of the screen.
     // This formula is based on page 13 of the "Nvidia 3D Vision Automatic, Best Practices Guide"
+#ifdef __LIBRETRO__
+    out.Write("\tfloat4 ex = (eye == 0) ? " I_STEREOEYE "[0] : " I_STEREOEYE "[2];\n");
+    out.Write("\tfloat4 ey = (eye == 0) ? " I_STEREOEYE "[1] : " I_STEREOEYE "[3];\n");
+    out.Write("\tf.pos.x = ex.x * f.pos.x + ex.y * f.pos.w + ex.z;\n");
+    out.Write("\tf.pos.y = ey.x * f.pos.y + ey.y * f.pos.w;\n");
+#else
     out.Write("\tfloat hoffset = (eye == 0) ? " I_STEREOPARAMS ".x : " I_STEREOPARAMS ".y;\n");
     out.Write("\tf.pos.x += hoffset * (f.pos.w - " I_STEREOPARAMS ".z);\n");
+#endif
   }
 
   if (primitive_type == PrimitiveType::Lines)

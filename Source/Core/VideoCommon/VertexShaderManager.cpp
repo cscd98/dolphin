@@ -26,6 +26,10 @@
 #include "VideoCommon/XFMemory.h"
 #include "VideoCommon/XFStateManager.h"
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/VideoCommon/HeadTracking.h"
+#endif
+
 void VertexShaderManager::Init()
 {
   // Initialize state tracking variables
@@ -41,6 +45,11 @@ void VertexShaderManager::Init()
 Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
 {
   const auto& rawProjection = xfmem.projection.rawProjection;
+
+#ifdef __LIBRETRO__
+  const HeadTracking::State head = HeadTracking::Get();
+  m_head_tracking_generation = head.generation;
+#endif
 
   switch (xfmem.projection.type)
   {
@@ -69,6 +78,19 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
 
     m_projection_matrix[14] = -1.0f;
     m_projection_matrix[15] = 0.0f;
+
+#ifdef __LIBRETRO__
+    if (head.active && head.has_fov)
+    {
+      // Mono headset frustum: x_ndc = (S*x + C*z) / -z
+      const float lr = head.tan_left + head.tan_right;
+      const float ud = head.tan_up + head.tan_down;
+      m_projection_matrix[0] = 2.0f / lr;
+      m_projection_matrix[2] = (head.tan_right - head.tan_left) / lr;
+      m_projection_matrix[5] = 2.0f / ud;
+      m_projection_matrix[6] = (head.tan_up - head.tan_down) / ud;
+    }
+#endif
 
     g_stats.gproj = m_projection_matrix;
   }
@@ -111,9 +133,18 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
 
   auto corrected_matrix = Common::Matrix44::FromArray(m_projection_matrix);
 
+#ifdef __LIBRETRO__
+    if (xfmem.projection.type == ProjectionType::Perspective)
+    {
+      if (head.active)
+        corrected_matrix *= Common::Matrix44::FromArray(head.view);
+      if (g_freelook_camera.IsActive())
+        corrected_matrix *= g_freelook_camera.GetView();
+    }
+#else
   if (g_freelook_camera.IsActive() && xfmem.projection.type == ProjectionType::Perspective)
     corrected_matrix *= g_freelook_camera.GetView();
-
+#endif
   g_freelook_camera.GetController()->SetClean();
 
   return corrected_matrix;
@@ -121,7 +152,11 @@ Common::Matrix44 VertexShaderManager::LoadProjectionMatrix()
 
 void VertexShaderManager::SetProjectionMatrix(XFStateManager& xf_state_manager)
 {
-  if (xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty())
+  if (xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty()
+#ifdef __LIBRETRO__
+      || HeadTrackingChanged()
+#endif
+  )
   {
     xf_state_manager.ResetProjection();
     auto corrected_matrix = LoadProjectionMatrix();
@@ -412,7 +447,11 @@ void VertexShaderManager::SetConstants(std::span<const std::string> textures,
   }
 
   if (xf_state_manager.DidProjectionChange() || g_freelook_camera.GetController()->IsDirty() ||
-      !projection_actions.empty() || m_projection_graphics_mod_change)
+      !projection_actions.empty() || m_projection_graphics_mod_change
+#ifdef __LIBRETRO__
+      || HeadTrackingChanged()
+#endif
+  )
   {
     xf_state_manager.ResetProjection();
     m_projection_graphics_mod_change = !projection_actions.empty();

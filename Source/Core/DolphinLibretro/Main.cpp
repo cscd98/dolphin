@@ -39,6 +39,7 @@
 #include "DolphinLibretro/Input.h"
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/Video.h"
+#include "DolphinLibretro/VideoViews.h"
 #include "VideoBackends/OGL/OGLTexture.h"
 #include "VideoBackends/OGL/OGLGfx.h"
 #include "VideoCommon/AsyncRequests.h"
@@ -177,10 +178,13 @@ void retro_get_system_av_info(retro_system_av_info* info)
   // Fixed max (>= any runtime height) so base can grow via SET_GEOMETRY alone.
   int max_height = base_height > 576 ? base_height : 576;
 
-  info->geometry.base_width  = EFB_WIDTH * efbScale;
+  const unsigned mult = Libretro::Video::Views::GetFrameWidthMultiplier();
+  const unsigned max_mult = Libretro::Video::Views::GetReservedWidthMultiplier();
+
+  info->geometry.base_width  = EFB_WIDTH * efbScale * mult;
   info->geometry.base_height = base_height * efbScale;
 
-  info->geometry.max_width   = EFB_WIDTH * efbScale;
+  info->geometry.max_width   = EFB_WIDTH * efbScale * max_mult;
   info->geometry.max_height  = max_height * efbScale;
 
   if (g_widescreen)
@@ -345,8 +349,10 @@ void retro_run(void)
   {
     retro_system_av_info info;
     retro_get_system_av_info(&info);
-    Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);
+    Libretro::environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &info);  
   }
+
+  Libretro::Video::Views::Update(Libretro::widescreen ? 16.0f / 9.0f : 4.0f / 3.0f);
 
   // target refresh rate has changed - e.g. user has chosen 60 Hz for a PAL game
   double new_rate = system.GetVideoInterface().GetTargetRefreshRate();

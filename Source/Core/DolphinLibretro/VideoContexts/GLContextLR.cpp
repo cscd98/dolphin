@@ -6,6 +6,7 @@
 #include "DolphinLibretro/Common/Options.h"
 #include "DolphinLibretro/VideoContexts/ContextStatus.h"
 #include "DolphinLibretro/Video.h"
+#include "DolphinLibretro/VideoViews.h"
 
 GLContextLR::GLContextLR()
 {
@@ -20,9 +21,7 @@ void* GLContextLR::GetFuncAddress(const std::string& name)
 
 bool GLContextLR::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core)
 {
-  const int efbScale = Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::EFB_SCALE, 1);
-  m_backbuffer_width = EFB_WIDTH * efbScale;
-  m_backbuffer_height = Libretro::Video::GetAdjustedBaseHeight() * efbScale;
+  UpdateBackbufferSize();
 
   switch (Libretro::Video::hw_render.context_type)
   {
@@ -46,6 +45,20 @@ bool GLContextLR::Initialize(const WindowSystemInfo& wsi, bool stereo, bool core
   m_initialized = true;
 
   return true;
+}
+
+void GLContextLR::UpdateBackbufferSize()
+{
+  const int efbScale =
+      Libretro::Options::GetCached<int>(Libretro::Options::gfx_settings::EFB_SCALE, 1);
+  m_backbuffer_width =
+      EFB_WIDTH * efbScale * Libretro::Video::Views::GetFrameWidthMultiplier();
+  m_backbuffer_height = Libretro::Video::GetAdjustedBaseHeight() * efbScale;
+}
+
+void GLContextLR::Update()
+{
+  UpdateBackbufferSize();
 }
 
 void GLContextLR::Swap()

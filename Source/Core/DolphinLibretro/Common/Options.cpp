@@ -1794,6 +1794,51 @@ static struct retro_core_option_v2_definition option_defs[] = {
     },
     "disabled"
   },
+  {
+    Libretro::Options::retroarch_core::STEREO_VIEWS,
+    "Graphics > Settings > Stereo 3D Views",
+    "Stereo 3D Views",
+    "Render both eyes when the frontend presents stereo views (SBS packing).",
+    nullptr, CATEGORY_RETROARCH_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled", nullptr },
+      { nullptr, nullptr }
+    },
+    "enabled"
+  },
+  {
+    Libretro::Options::retroarch_core::REQUEST_FLAT,
+    "Graphics > Settings > Flat Presentation in Headset",
+    "Flat Presentation in Headset",
+    "Ask the frontend to show the image on a flat screen even in a headset.",
+    nullptr, CATEGORY_RETROARCH_CORE,
+    {
+      { "disabled", nullptr },
+      { "enabled", nullptr },
+      { nullptr, nullptr }
+    },
+    "disabled"
+  },
+  {
+    Libretro::Options::retroarch_core::HEAD_TRACKING,
+    "Graphics > Settings > VR Head Tracking",
+    "VR Head Tracking",
+    "Drive the game camera from the headset pose when the frontend reports an active HMD.",
+    nullptr, CATEGORY_RETROARCH_CORE,
+    { { "disabled", nullptr }, { "enabled", nullptr }, { nullptr, nullptr } },
+    "enabled"
+  },
+  {
+    Libretro::Options::retroarch_core::VR_WORLD_SCALE,
+    "Graphics > Settings > VR World Scale",
+    "VR World Scale",
+    "Game units per metre of real head movement. Games differ; raise it if positional tracking feels too small.",
+    nullptr, CATEGORY_RETROARCH_CORE,
+    { { "1", nullptr }, { "10", nullptr }, { "50", nullptr }, { "100", nullptr },
+      { "200", nullptr }, { nullptr, nullptr } },
+    "1"
+  },
 
 #if defined(HAS_OPENGL) && defined(__WEBOS__)
   {

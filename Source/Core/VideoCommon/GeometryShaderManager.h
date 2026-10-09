@@ -6,8 +6,14 @@
 #include "Common/CommonTypes.h"
 #include "VideoCommon/ConstantManager.h"
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/VideoCommon/HeadTracking.h"
+#endif
+
 class PointerWrap;
 enum class PrimitiveType : u32;
+
+enum class APIType;
 
 // The non-API dependent parts.
 class GeometryShaderManager

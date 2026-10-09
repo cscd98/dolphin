@@ -119,4 +119,8 @@ struct alignas(16) GeometryShaderConstants
   int4 texoffset;
   VSExpand vs_expand;  // Used by VS point/line expansion in ubershaders
   u32 pad[3];
+
+#ifdef __LIBRETRO__
+  std::array<float4, 4> stereo_eye;
+#endif
 };

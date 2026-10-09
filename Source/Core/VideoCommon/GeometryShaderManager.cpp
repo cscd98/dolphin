@@ -10,7 +10,15 @@
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/XFMemory.h"
 
+#ifdef __LIBRETRO__
+#include "DolphinLibretro/VideoCommon/HeadTracking.h"
+#endif
+
 static constexpr int LINE_PT_TEX_OFFSETS[8] = {0, 16, 8, 4, 2, 1, 1, 1};
+
+#ifdef __LIBRETRO__
+static u64 s_head_eye_generation = 0;
+#endif
 
 void GeometryShaderManager::Init()
 {
@@ -46,6 +54,58 @@ void GeometryShaderManager::SetVSExpand(VSExpand expand)
 
 void GeometryShaderManager::SetConstants(PrimitiveType prim)
 {
+#ifdef __LIBRETRO__
+  const u64 eye_generation = HeadTracking::EyeGeneration();
+  if (eye_generation != s_head_eye_generation)
+  {
+    s_head_eye_generation = eye_generation;
+    m_projection_changed = true;
+  }
+
+  if (m_projection_changed && g_ActiveConfig.stereo_mode != StereoMode::Off)
+  {
+    m_projection_changed = false;
+
+    if (xfmem.projection.type == ProjectionType::Perspective)
+    {
+      const float offset = g_ActiveConfig.stereo_depth;
+      constants.stereoparams[0] = g_ActiveConfig.bStereoSwapEyes ? offset : -offset;
+      constants.stereoparams[1] = g_ActiveConfig.bStereoSwapEyes ? -offset : offset;
+    }
+    else
+    {
+      constants.stereoparams[0] = constants.stereoparams[1] = 0;
+    }
+
+    constants.stereoparams[2] = g_ActiveConfig.stereo_convergence;
+
+    // NEW: per-eye affine terms (head-tracked or legacy)
+    const bool persp = xfmem.projection.type == ProjectionType::Perspective;
+    const HeadTracking::State head = HeadTracking::Get();
+    const bool swap = g_ActiveConfig.bStereoSwapEyes;
+
+    for (int eye = 0; eye < 2; eye++)
+    {
+      auto& ex = constants.stereo_eye[eye * 2];
+      auto& ey = constants.stereo_eye[eye * 2 + 1];
+      if (persp && head.active && head.has_eyes)
+      {
+        const auto& e = head.eyes[swap ? 1 - eye : eye];
+        ex = {e.kx, e.ax, e.bx, 0.0f};
+        ey = {e.ky, e.ay, 0.0f, 0.0f};
+      }
+      else
+      {
+        // Legacy mapping: x += h * (w - convergence). Orthographic gives h = 0.
+        const float h = constants.stereoparams[eye];
+        ex = {1.0f, h, -h * constants.stereoparams[2], 0.0f};
+        ey = {1.0f, 0.0f, 0.0f, 0.0f};
+      }
+    }
+
+    dirty = true;
+  }
+#else
   if (m_projection_changed && g_ActiveConfig.stereo_mode != StereoMode::Off)
   {
     m_projection_changed = false;
@@ -65,6 +125,7 @@ void GeometryShaderManager::SetConstants(PrimitiveType prim)
 
     dirty = true;
   }
+#endif
 
   if (g_ActiveConfig.UseVSForLinePointExpand())
   {

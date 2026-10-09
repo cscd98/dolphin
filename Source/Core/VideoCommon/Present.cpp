@@ -4,6 +4,7 @@
 #include "VideoCommon/Present.h"
 
 #include "Common/ChunkFile.h"
+#include "Common/Logging/Log.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/CoreTiming.h"
@@ -969,6 +970,21 @@ void Presenter::Present(PresentInfo* present_info)
     MathUtil::Rectangle<int> render_source_rc = AdjustForCustomCrop(m_xfb_rect);
     AdjustRectanglesToFitBounds(&render_target_rc, &render_source_rc, m_backbuffer_width,
                                 m_backbuffer_height);
+
+#ifdef __LIBRETRO__
+    {
+      static u32 s_last_xfb_layers = 99;
+      const u32 xl = m_xfb_entry->texture->GetLayers();
+      if (xl != s_last_xfb_layers)
+      {
+        s_last_xfb_layers = xl;
+        INFO_LOG_FMT(VIDEO, "Views: Present xfb_layers={} stereo_mode={} target={},{} {}x{} backbuffer={}x{}",
+                     xl, static_cast<int>(g_ActiveConfig.stereo_mode), render_target_rc.left,
+                     render_target_rc.top, render_target_rc.GetWidth(), render_target_rc.GetHeight(),
+                     m_backbuffer_width, m_backbuffer_height);
+      }
+    }
+#endif
     RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
   }
 

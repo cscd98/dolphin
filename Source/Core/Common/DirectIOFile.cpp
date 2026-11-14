@@ -94,6 +94,11 @@ bool DirectIOFile::Open(const std::string& path, AccessMode access_mode, OpenMod
   }
 #endif
 
+#if defined(__LIBRETRO__) && defined(__SWITCH2__)
+  ERROR_LOG_FMT(COMMON, "Switch 2 DirectIO requires the frontend VFS interface");
+  return false;
+#endif
+
 #if defined(_WIN32)
   DWORD desired_access = GENERIC_READ | GENERIC_WRITE;
   if (access_mode == AccessMode::Read)
@@ -258,6 +263,8 @@ bool DirectIOFile::OffsetRead(u64 offset, u8* out_ptr, u64 size)
 
 #if defined(_WIN32)
   return OverlappedTransfer<ReadFile>(m_handle, offset, out_ptr, size);
+#elif defined(__LIBRETRO__) && defined(__SWITCH2__)
+  return false;
 #else
   return pread(m_fd, out_ptr, size, off_t(offset)) == ssize_t(size);
 #endif
@@ -278,6 +285,8 @@ bool DirectIOFile::OffsetWrite(u64 offset, const u8* in_ptr, u64 size)
 
 #if defined(_WIN32)
   return OverlappedTransfer<WriteFile>(m_handle, offset, in_ptr, size);
+#elif defined(__LIBRETRO__) && defined(__SWITCH2__)
+  return false;
 #else
   return pwrite(m_fd, in_ptr, size, off_t(offset)) == ssize_t(size);
 #endif

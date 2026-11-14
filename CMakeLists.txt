@@ -24,6 +24,14 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 project(dolphin-emu)
 
+if(NINTENDO_SWITCH2 AND LIBRETRO)
+  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+  set(CMAKE_C_STANDARD_LIBRARIES "-lgcc")
+  set(CMAKE_CXX_STANDARD_LIBRARIES "-lgcc")
+  add_compile_options(-mtls-dialect=trad -ftls-model=global-dynamic
+    $<$<COMPILE_LANGUAGE:CXX>:-fuse-cxa-atexit>)
+endif()
+
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMake)
 
 # Support functions
@@ -780,7 +788,7 @@ if(ENABLE_CUBEB)
   add_definitions(-DHAVE_CUBEB)
 endif()
 
-if(NOT ANDROID AND NOT IOS AND NOT WEBOS)
+if(NOT ANDROID AND NOT IOS AND NOT WEBOS AND NOT (NINTENDO_SWITCH2 AND LIBRETRO))
   dolphin_find_optional_system_library(LibUSB Externals/libusb)
   add_definitions(-D__LIBUSB__)
 endif()
@@ -801,7 +809,7 @@ dolphin_find_optional_system_library(MBEDTLS Externals/mbedtls 2.28)
 
 dolphin_find_optional_system_library(CURL Externals/curl)
 
-if(NOT ANDROID AND NOT IOS)
+if(NOT ANDROID AND NOT IOS AND NOT (NINTENDO_SWITCH2 AND LIBRETRO))
   dolphin_find_optional_system_library(HIDAPI Externals/hidapi)
 endif()
 

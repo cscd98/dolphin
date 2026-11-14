@@ -39,7 +39,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
    set(CLANG 1)
 endif()
 
-if(NOT MSVC AND NOT CLANG)
+if(NOT MSVC AND NOT CLANG AND NOT NINTENDO_SWITCH2)
    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 endif()
 
@@ -91,4 +91,13 @@ if(APPLE)
   target_sources(dolphin_libretro PRIVATE
     ${CMAKE_SOURCE_DIR}/Source/Core/Common/CommonFuncsObjC.mm
   )
+endif()
+
+if(NINTENDO_SWITCH2)
+  set(LIBOUNCE_MODULE_DIR "${CMAKE_SOURCE_DIR}/Externals/libretro-common/dynamic/libounce"
+    CACHE PATH "Shared libretro-common Switch 2 module support")
+  include("${LIBOUNCE_MODULE_DIR}/libounce-module.cmake")
+  libounce_add_module(dolphin_libretro)
+  target_link_options(dolphin_libretro PRIVATE
+    "-L$ENV{DEVKITPRO}/portlibs/switch2/lib" "-L$ENV{DEVKITPRO}/portlibs/switch/lib")
 endif()

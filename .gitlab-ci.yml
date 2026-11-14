@@ -43,6 +43,11 @@ include:
   - project: 'libretro-infrastructure/ci-templates'
     file: '/tvos-cmake.yml'
 
+  ################################## CONSOLES ################################
+  # Nintendo Switch 2
+  - project: 'libretro-infrastructure/ci-templates'
+    file: '/libounce-static.yml'
+
   ################################## MISC ####################################
   # webOS aarch64
   - project: 'libretro-infrastructure/ci-templates'
@@ -52,6 +57,7 @@ include:
 stages:
   - build-prepare
   - build-shared
+  - build-static
 
 ##############################################################################
 #################################### STAGES ##################################
@@ -148,6 +154,13 @@ libretro-build-tvos-arm64:
   variables:
     CMAKE_ADDL_COMP_FLAGS: ""
     MINVER: 14.0
+
+################################### CONSOLES #################################
+# Nintendo Switch 2
+libretro-build-libounce-aarch64:
+   extends:
+     - .libretro-libounce-static-retroarch-master
+     - .core-defs
 
 ################################## MISC ####################################
 # webOS aarch64

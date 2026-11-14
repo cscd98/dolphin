@@ -109,7 +109,6 @@ add_library(common
   Matrix.cpp
   Matrix.h
   MemArena.h
-  MemoryUtil.cpp
   MemoryUtil.h
   MinizipUtil.h
   MsgHandler.cpp
@@ -226,7 +225,14 @@ elseif(HAIKU)
   target_link_libraries(common PRIVATE be GL)
 endif()
 
-if(ANDROID)
+if(NINTENDO_SWITCH2 AND LIBRETRO)
+  target_sources(common PRIVATE MemoryUtilSwitch.cpp MemArenaSwitch.cpp Logging/ConsoleListenerNix.cpp)
+else()
+  target_sources(common PRIVATE MemoryUtil.cpp)
+endif()
+
+if(NINTENDO_SWITCH2 AND LIBRETRO)
+elseif(ANDROID)
   target_sources(common PRIVATE
     Logging/ConsoleListenerDroid.cpp
     MemArenaAndroid.cpp
